@@ -23,12 +23,41 @@ function error(message) {
     console.error(`[\x1b[31m${timestamp}\x1b[0m] [ERROR] ${message}`);
 }
 
+const PATCH_START_MARKER = '<!-- Antigravity Auto-Retry Patch Start -->';
+const PATCH_END_MARKER = '<!-- Antigravity Auto-Retry Patch End -->';
+const PATCH_BLOCK_REGEX = /<!-- Antigravity Auto-Retry Patch Start -->[\s\S]*?<!-- Antigravity Auto-Retry Patch End -->/;
+
 const INJECTION_SCRIPT = `
 <!-- Antigravity Auto-Retry Patch Start -->
 <script type="text/javascript">
 (function() {
     console.log("Antigravity Auto-Retry: Direct Injection successful.");
+    const FAST_DELAYS_MS = [1000, 2000, 5000];
+    const EXPONENTIAL_BASE_DELAY_MS = 10000;
+    const MAX_DELAY_MS = 300000;
+    const RESET_AFTER_MS = 60000;
     let intervalId = null;
+    let attemptCount = 0;
+    let nextRetryAt = 0;
+    let lastButtonSeenAt = 0;
+
+    function getRetryDelayMs(attemptIndex) {
+        if (attemptIndex < FAST_DELAYS_MS.length) {
+            return FAST_DELAYS_MS[attemptIndex];
+        }
+
+        const exponentialAttemptIndex = attemptIndex - FAST_DELAYS_MS.length;
+        return Math.min(EXPONENTIAL_BASE_DELAY_MS * (2 ** exponentialAttemptIndex), MAX_DELAY_MS);
+    }
+
+    function resetBackoff() {
+        if (attemptCount > 0 || nextRetryAt > 0) {
+            console.log("Antigravity Auto-Retry: Resetting retry backoff.");
+        }
+        attemptCount = 0;
+        nextRetryAt = 0;
+    }
+
     function startAutoRetry() {
         if (intervalId) return;
         intervalId = setInterval(() => {
@@ -40,10 +69,32 @@ const INJECTION_SCRIPT = `
                        text.includes("try again") || 
                        text.includes("fortfahren");
             });
-            if (retryButton && !(retryButton.disabled)) {
-                console.log("Antigravity Auto-Retry: Found button. Clicking...");
-                retryButton.click();
+
+            const now = Date.now();
+            if (!retryButton || retryButton.disabled) {
+                if (lastButtonSeenAt && now - lastButtonSeenAt >= RESET_AFTER_MS) {
+                    lastButtonSeenAt = 0;
+                    resetBackoff();
+                }
+                return;
             }
+
+            lastButtonSeenAt = now;
+            if (now < nextRetryAt) {
+                return;
+            }
+
+            const nextDelayMs = getRetryDelayMs(attemptCount);
+            console.log(
+                "Antigravity Auto-Retry: Clicking retry button. Attempt " +
+                (attemptCount + 1) +
+                ", next delay " +
+                Math.round(nextDelayMs / 1000) +
+                "s."
+            );
+            retryButton.click();
+            attemptCount += 1;
+            nextRetryAt = now + nextDelayMs;
         }, 1000);
     }
     startAutoRetry();
@@ -100,6 +151,15 @@ function getWorkbenchPath() {
     return null;
 }
 
+function canWriteToPath(filePath) {
+    try {
+        fs.accessSync(filePath, fs.constants.W_OK);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
 async function applyPatch() {
     log('--- Antigravity Retry Patch Utility ---');
     
@@ -132,13 +192,6 @@ async function applyPatch() {
             log('Backup already exists, skipping backup creation.');
         }
 
-        // 2. Check if already patched
-        if (html.includes('Antigravity Auto-Retry Patch')) {
-            log('Patch already appears to be applied in the file. No changes needed.');
-            log('Success! (Verified)');
-            return;
-        }
-
         log('Preparing patched content...');
 
         // 3. Inject 'unsafe-inline' into CSP (Content Security Policy)
@@ -152,8 +205,11 @@ async function applyPatch() {
             return match;
         });
 
-        // 4. Inject the script before </body> or at the end of body
-        if (html.includes('</body>')) {
+        // 4. Inject or refresh the script block
+        if (PATCH_BLOCK_REGEX.test(html)) {
+            log('Existing patch found. Refreshing injected script...');
+            html = html.replace(PATCH_BLOCK_REGEX, INJECTION_SCRIPT.trim());
+        } else if (html.includes('</body>')) {
             log('Injecting script before </body> tag...');
             html = html.replace('</body>', INJECTION_SCRIPT + '</body>');
         } else if (html.includes('<body')) {
@@ -164,7 +220,13 @@ async function applyPatch() {
             html += INJECTION_SCRIPT;
         }
 
-        if (html.length === originalHtmlLength) {
+        if (html === fs.readFileSync(workbenchPath, 'utf8')) {
+            log('Patch is already up to date. No changes needed.');
+            log('Success! (Verified)');
+            return;
+        }
+
+        if (html.length === originalHtmlLength && !html.includes(PATCH_START_MARKER) && !html.includes(PATCH_END_MARKER)) {
             error('Injection failed: content was not modified. Please check the file structure of workbench.html.');
             return;
         }
@@ -172,8 +234,8 @@ async function applyPatch() {
         // 5. Write back with privilege handling
         log('Writing patched content back to workbench.html...');
         
-        if (isElevated()) {
-            log('Running with sufficient privileges. Writing directly...');
+        if (isElevated() || canWriteToPath(workbenchPath)) {
+            log('Running with sufficient write access. Writing directly...');
             fs.writeFileSync(workbenchPath, html);
             log('File written successfully.');
         } else {

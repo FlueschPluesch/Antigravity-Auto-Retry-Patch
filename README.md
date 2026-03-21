@@ -1,6 +1,6 @@
 # Antigravity Auto-Retry Patch
 
-This utility provides a robust, cross-platform patch for the **Antigravity IDE** (VS Code based) that automatically checks for and clicks "Retry" (or "Wiederholen") buttons in the workbench UI.
+This utility provides a robust, cross-platform patch for the **Antigravity IDE** (VS Code based) that automatically checks for and clicks "Retry" (or "Wiederholen") buttons in the workbench UI with a bounded exponential backoff strategy.
 
 ## Why is this useful?
 When working with AI agents or long-running tasks in Antigravity, you might encounter transient network failures or quota limits that prompt a "Retry" dialog. This script automates the process of clicking that button, ensuring your workflow isn't interrupted by manual intervention.
@@ -9,6 +9,7 @@ When working with AI agents or long-running tasks in Antigravity, you might enco
 - **Cross-Platform Support:** Works on Windows, Linux, and macOS.
 - **Auto-Detection:** Automatically finds the Antigravity installation path on all supported systems.
 - **Detailed Logging:** Provides clear, timestamped feedback in the terminal for every step.
+- **Bounded Exponential Backoff:** Retries immediately at first, then backs off quickly to avoid hammering the UI forever.
 - **Safety First:** 
   - Automatically creates a backup (`workbench.html.bak`) before making changes.
   - Safely modifies the Content Security Policy (CSP) to allow the injection.
@@ -48,7 +49,8 @@ The script injects a small, lightweight JavaScript snippet into the `workbench.h
 1. Runs in the main UI thread.
 2. Scans for buttons every 1,000ms (1 second).
 3. Looks for text like "Retry", "Try Again", "Wiederholen", or "Fortfahren".
-4. Clicks the button if it's found and not disabled.
+4. Clicks immediately on the first failure, then uses fast retries followed by exponential backoff with an upper bound.
+5. Resets the backoff window after the retry prompt has been gone for a while.
 
 ## Reverting Changes
 If you ever want to revert the patch:
