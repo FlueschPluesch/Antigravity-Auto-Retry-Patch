@@ -44,6 +44,17 @@ sudo node applyRetryPatch.js
 ### 3. Restart Antigravity
 After the script reports success, simply restart the Antigravity IDE. The auto-retry logic will now be active in the workbench.
 
+## Known Limitation: Integrity Warning
+Some Antigravity builds verify checksums for bundled application files, including `workbench.html`.
+
+Because this patch modifies `workbench.html` directly, Antigravity may show a warning such as:
+
+> "Antigravity installation appears to be corrupt. Please reinstall."
+
+In practice, the auto-retry patch can still continue to work normally even when that warning is shown. The warning is triggered by the checksum mismatch, not necessarily because the installation is unusable.
+
+If you want to remove the warning, revert the patch by restoring the original `workbench.html` from `workbench.html.bak`, or reinstall Antigravity.
+
 ## How it Works
 The script injects a small, lightweight JavaScript snippet into the `workbench.html` file of the IDE. This snippet:
 1. Runs in the main UI thread.
