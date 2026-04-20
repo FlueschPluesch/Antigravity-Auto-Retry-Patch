@@ -218,9 +218,10 @@ async function getPatchChoice() {
     console.log('6) Only Continue');
     console.log('7) Only Allow');
     console.log('8) Only Run');
+    console.log('9) Reset all');
 
     return new Promise((resolve) => {
-        rl.question('\nSelect an option (1-8) or press Enter for all: ', (answer) => {
+        rl.question('\nSelect an option (1-9) or press Enter for all: ', (answer) => {
             rl.close();
             switch (answer) {
                 case '2': return resolve('retry_continue_allow');
@@ -230,6 +231,7 @@ async function getPatchChoice() {
                 case '6': return resolve('continue');
                 case '7': return resolve('allow');
                 case '8': return resolve('run');
+                case '9': return resolve('reset_all');
                 default: return resolve('all');
             }
         });
@@ -252,7 +254,7 @@ function isElevated() {
 
 function getWorkbenchPath() {
     const relativeWorkbenchPath = path.join('resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html');
-    
+
     let possiblePaths = [];
 
     if (process.platform === 'linux') {
@@ -286,7 +288,7 @@ function getWorkbenchPath() {
 
 async function applyPatch() {
     log('--- Antigravity Retry Patch Utility ---');
-    
+
     const choice = await getPatchChoice();
     log(`Selected mode: ${choice.toUpperCase()}`);
 
@@ -298,7 +300,33 @@ async function applyPatch() {
 
     const backupPath = workbenchPath + '.bak';
     let cleanHtml = '';
-
+    //reset all
+    try {
+        if (choice.includes('reset_all')) {
+            if (fs.existsSync(backupPath)) {
+                log(`Found backup at ${backupPath}. Using it as clean base`);
+                fs.writeFileSync(workbenchPath, fs.readFileSync(backupPath))
+                log('------------------------------------------');
+                log('Reset successfully applied!');
+                log('Please restart Antigravity to see the changes.');
+                log('------------------------------------------');
+            }
+            else {
+                console.log('Backup does not exist, reset aborted')
+                return;
+            }
+            return;
+        }
+    } catch (e) {
+        if (!isElevated()) error('You do not have sufficient permissions. Run the script again as administrator');
+        else if (e.code === 'EACCES') {
+            warn('Permission denied while writing file.');
+        } else {
+            throw e;
+        }
+        return;
+    }
+    //normal patching proces
     try {
         // 1. Determine clean base content
         if (fs.existsSync(backupPath)) {
@@ -307,7 +335,7 @@ async function applyPatch() {
         } else {
             log(`No backup found. Reading current file and creating backup at ${backupPath}...`);
             cleanHtml = fs.readFileSync(workbenchPath, 'utf8');
-            
+
             // Initial check to make sure we don't backup a file that's already patched
             if (cleanHtml.includes('Antigravity Auto-Retry Patch')) {
                 error('The current workbench.html already contains a patch but no .bak file exists.');
@@ -354,7 +382,7 @@ async function applyPatch() {
 
         // 4. Write back with privilege handling
         log('Writing patched content back to workbench.html...');
-        
+
         if (isElevated()) {
             log('Running with sufficient privileges. Writing directly...');
             fs.writeFileSync(workbenchPath, html);
@@ -365,19 +393,19 @@ async function applyPatch() {
             log('File written successfully.');
         } else {
             log('Not running with elevated privileges. Attempting to use platform-specific elevation...');
-            
+
             if (process.platform === 'linux' || process.platform === 'darwin') {
                 const tempPath = path.join(process.env.TMPDIR || '/tmp', 'workbench_patched.html');
                 const tempBakPath = path.join(process.env.TMPDIR || '/tmp', 'workbench.html.bak');
-                
+
                 fs.writeFileSync(tempPath, html);
                 let commands = `sudo cp "${tempPath}" "${workbenchPath}"`;
-                
+
                 if (!fs.existsSync(backupPath)) {
                     fs.writeFileSync(tempBakPath, cleanHtml);
                     commands += ` && sudo cp "${tempBakPath}" "${backupPath}"`;
                 }
-                
+
                 log('Executing sudo to copy files to system path...');
                 execSync(commands);
                 log('Files moved successfully using sudo.');
