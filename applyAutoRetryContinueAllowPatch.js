@@ -27,11 +27,12 @@ function error(message) {
 /**
  * Generates the injection script based on the user's choice.
  */
-function generateInjectionScript(choice) {
+function generateInjectionScript(choice, hideCorruption) {
     const includeRetry = choice === 'all' || choice.includes('retry');
     const includeContinue = choice === 'all' || choice.includes('continue');
     const includeAllow = choice === 'all' || choice.includes('allow');
     const includeRun = choice === 'all' || choice.includes('run');
+    const includeHideCorruption = hideCorruption;
 
     return `
 <!-- Antigravity Auto-Retry Patch Start -->
@@ -190,6 +191,20 @@ function generateInjectionScript(choice) {
                     }
                 }
                 ` : ''}
+
+                ${includeHideCorruption ? `
+                // --- Part 5: Hide corruption warning ---
+                const corruptionMsg = "Your antigravity installation appears to be corrupt";
+                const notifications = document.querySelectorAll('.notification-toast, .monaco-list-row, .notification-list-item');
+                notifications.forEach(el => {
+                    if (el.textContent.includes(corruptionMsg)) {
+                        el.style.display = 'none';
+                        // Also try to find the parent toast container and hide it
+                        const toast = el.closest('.notification-toast-container');
+                        if (toast) toast.style.display = 'none';
+                    }
+                });
+                ` : ''}
             } catch (e) {
                 console.error("Antigravity Auto-Retry loop error:", e);
             }
@@ -222,18 +237,26 @@ async function getPatchChoice() {
 
     return new Promise((resolve) => {
         rl.question('\nSelect an option (1-9) or press Enter for all: ', (answer) => {
-            rl.close();
+            let choice = 'all';
             switch (answer) {
-                case '2': return resolve('retry_continue_allow');
-                case '3': return resolve('retry_allow');
-                case '4': return resolve('continue_allow');
-                case '5': return resolve('retry');
-                case '6': return resolve('continue');
-                case '7': return resolve('allow');
-                case '8': return resolve('run');
-                case '9': return resolve('reset_all');
-                default: return resolve('all');
+                case '2': choice = 'retry_continue_allow'; break;
+                case '3': choice = 'retry_allow'; break;
+                case '4': choice = 'continue_allow'; break;
+                case '5': choice = 'retry'; break;
+                case '6': choice = 'continue'; break;
+                case '7': choice = 'allow'; break;
+                case '8': choice = 'run'; break;
+                case '9':
+                    rl.close();
+                    return resolve({ choice: 'reset_all' });
+                default: choice = 'all'; break;
             }
+
+            rl.question('Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: n]: ', (hideAnswer) => {
+                rl.close();
+                const hideCorruption = hideAnswer.toLowerCase().startsWith('y');
+                resolve({ choice, hideCorruption });
+            });
         });
     });
 }
@@ -289,8 +312,12 @@ function getWorkbenchPath() {
 async function applyPatch() {
     log('--- Antigravity Retry Patch Utility ---');
 
-    const choice = await getPatchChoice();
-    log(`Selected mode: ${choice.toUpperCase()}`);
+    const { choice, hideCorruption } = await getPatchChoice();
+    if (choice === 'reset_all') {
+        log(`Selected mode: RESET ALL`);
+    } else {
+        log(`Selected mode: ${choice.toUpperCase()}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}`);
+    }
 
     const workbenchPath = getWorkbenchPath();
     if (!workbenchPath) {
@@ -302,7 +329,7 @@ async function applyPatch() {
     let cleanHtml = '';
     //reset all
     try {
-        if (choice.includes('reset_all')) {
+        if (choice === 'reset_all') {
             if (fs.existsSync(backupPath)) {
                 log(`Found backup at ${backupPath}. Using it as clean base`);
                 fs.writeFileSync(workbenchPath, fs.readFileSync(backupPath))
@@ -357,7 +384,7 @@ async function applyPatch() {
 
         log('Preparing patched content...');
         let html = cleanHtml;
-        const injectionScript = generateInjectionScript(choice);
+        const injectionScript = generateInjectionScript(choice, hideCorruption);
 
         // 2. Inject 'unsafe-inline' into CSP (Content Security Policy)
         html = html.replace(/(script-src\s+[^;]*)/, (match) => {
@@ -410,8 +437,31 @@ async function applyPatch() {
                 execSync(commands);
                 log('Files moved successfully using sudo.');
             } else if (process.platform === 'win32') {
-                error('Insufficient privileges to modify the file. Please run this command prompt or terminal as Administrator.');
-                process.exit(1);
+                const canWrite = () => {
+                    try {
+                        fs.accessSync(workbenchPath, fs.constants.W_OK);
+                        // If backup exists, check if we can write to it too
+                        if (fs.existsSync(backupPath)) {
+                            fs.accessSync(backupPath, fs.constants.W_OK);
+                        }
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                };
+                if (canWrite()) {
+                    log('Running with sufficient privileges');
+                    fs.writeFileSync(workbenchPath, html);
+                    // Also ensure backup exists if it didn't before (and we have permission now)
+                    if (!fs.existsSync(backupPath)) {
+                        fs.writeFileSync(backupPath, cleanHtml);
+                    }
+                    log('File written successfully.');
+                }
+                else {
+                    error('Insufficient privileges to modify the file. Please run this command prompt or terminal as Administrator.');
+                    process.exit(1);
+                }
             }
         }
 
