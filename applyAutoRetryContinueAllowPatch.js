@@ -194,10 +194,11 @@ function generateInjectionScript(choice, hideCorruption) {
 
                 ${includeHideCorruption ? `
                 // --- Part 5: Hide corruption warning ---
-                const corruptionMsg = "Your antigravity installation appears to be corrupt";
+                const corruptionMsg = "Your Antigravity installation appears to be corrupt";
+                const corruptionMsgGerman = "Ihre Antigravity-Installation scheint beschädigt zu sein.";
                 const notifications = document.querySelectorAll('.notification-toast, .monaco-list-row, .notification-list-item');
                 notifications.forEach(el => {
-                    if (el.textContent.includes(corruptionMsg)) {
+                    if (el.textContent.includes(corruptionMsg) || el.textContent.includes(corruptionMsgGerman)) {
                         el.style.display = 'none';
                         // Also try to find the parent toast container and hide it
                         const toast = el.closest('.notification-toast-container');
