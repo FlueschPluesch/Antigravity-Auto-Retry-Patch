@@ -15,7 +15,7 @@ When working with AI agents or long-running tasks in Antigravity, you might enco
   5. Clicks **Send**.
 - **Auto-Allow**: Automatically clicks "Allow" buttons.
 - **Auto-Run**: Automatically clicks "Run" buttons.
-- **Remove corrupt installation notification**: Removes the "corrupt installation" notification that appears.
+- **Remove corrupt installation notification**: Removes the corrupt installation notification that appears.
 - **Interactive Configuration**: Choose exactly which features to enable during installation.
 - **Cross-Platform Support**: Works on Windows, Linux, and macOS.
 - **Auto-Detection**: Automatically finds the Antigravity installation path.
@@ -62,6 +62,7 @@ The script injects a small, lightweight JavaScript snippet into the `workbench.h
 2. Scans for buttons and monitors state every **100ms**.
 3. Checks for specific button text (case-insensitive) and uses `WeakSet` to ensure each button is clicked only once when appropriate.
 4. Tracks the duration of the "Running" state to trigger the recovery sequence if a timeout is reached.
+5. Checks for specific notification text and hides the corrupt installation notification.
 
 ## Reverting Changes
 The script includes a built-in restore function. Run the script like described above and choose 9: Reset All
