@@ -27,7 +27,7 @@ function error(message) {
 /**
  * Generates the injection script based on the user's choice.
  */
-function generateInjectionScript(choice, hideCorruption) {
+function generateInjectionScript(choice, hideCorruption, enableDebug) {
     const includeRetry = choice === 'all' || choice.includes('retry');
     const includeContinue = choice === 'all' || choice.includes('continue');
     const includeAllow = choice === 'all' || choice.includes('allow');
@@ -45,12 +45,231 @@ function generateInjectionScript(choice, hideCorruption) {
     ${includeContinue ? 'let hasSeenDots = false;' : ''}
     ${includeContinue ? 'let isHandlingSequence = false;' : ''}
 
+    ${enableDebug ? `
+    const FileSystemAccess = (function() {
+        let fs = null, path = null, basePath = '';
+        try {
+            if (typeof window.requireNode !== 'undefined') {
+                fs = window.requireNode('fs');
+                path = window.requireNode('path');
+            } else if (typeof require !== 'undefined' && require.nodeRequire) {
+                fs = require.nodeRequire('fs');
+                path = require.nodeRequire('path');
+            } else if (typeof process !== 'undefined' && process.mainModule) {
+                fs = process.mainModule.require('fs');
+                path = process.mainModule.require('path');
+            } else if (typeof require !== 'undefined') {
+                fs = require('fs');
+                path = require('path');
+            }
+            if (fs && path) {
+                const osHome = typeof process !== 'undefined' ? (process.env.HOME || process.env.USERPROFILE || '') : '';
+                basePath = osHome ? path.join(osHome, 'Downloads') : (typeof process !== 'undefined' && process.platform === 'win32' ? 'C:\\\\Downloads' : '/tmp');
+            }
+        } catch (e) {}
+        return { fs, path, basePath };
+    })();
+
+    function getElementPath(el) {
+        if (!el) return 'unknown';
+        let path = [];
+        let current = el;
+        while (current && current.nodeType === Node.ELEMENT_NODE) {
+            let selector = current.nodeName.toLowerCase();
+            if (current.id) {
+                selector += '#' + current.id;
+                path.unshift(selector);
+                break;
+            } else {
+                let sib = current, nth = 1;
+                while (sib = sib.previousElementSibling) {
+                    if (sib.nodeName.toLowerCase() == selector) nth++;
+                }
+                if (nth != 1) selector += ":nth-of-type(" + nth + ")";
+            }
+            if (current.className && typeof current.className === 'string') {
+                const classes = current.className.trim().split(/\\s+/);
+                if (classes.length > 0 && classes[0] !== '') {
+                    selector += '.' + classes.join('.');
+                }
+            }
+            path.unshift(selector);
+            current = current.parentNode;
+        }
+        return path.join(' > ');
+    }
+
+    let logBuffer = [];
+
+    function downloadFileBrowser(filename, content) {
+        try {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch(e) {
+            console.error("Antigravity Browser Download Error:", e);
+        }
+    }
+
+    function writeDebugLog(msg, element = null) {
+        try {
+            const timestamp = new Date().toISOString();
+            let logMsg = \`[\${timestamp}] \${msg}\`;
+            if (element) {
+                logMsg += \` | Element path: \${getElementPath(element)}\`;
+            }
+            logMsg += '\\n';
+            
+            console.log("Antigravity Patch Debug:", logMsg.trim());
+            logBuffer.push(logMsg);
+
+            if (FileSystemAccess.fs && FileSystemAccess.path) {
+                const logPath = FileSystemAccess.path.join(FileSystemAccess.basePath, 'antigravity-patch-debug.log');
+                FileSystemAccess.fs.appendFileSync(logPath, logMsg);
+            }
+        } catch (e) {
+            console.error("Antigravity Patch Debug error:", e);
+        }
+    }
+
+    // Add floating button for manual log download
+    function createDebugButton() {
+        if (document.getElementById('antigravity-debug-download-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'antigravity-debug-download-btn';
+        btn.textContent = '📥 Download Debug Infos';
+        btn.style.position = 'fixed';
+        btn.style.bottom = '15%';
+        btn.style.right = '20px';
+        btn.style.zIndex = '999999';
+        btn.style.padding = '8px 12px';
+        btn.style.backgroundColor = '#d32f2f';
+        btn.style.color = 'white';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '4px';
+        btn.style.cursor = 'pointer';
+        btn.style.fontFamily = 'sans-serif';
+        btn.style.fontSize = '12px';
+        btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+        
+        btn.onclick = () => {
+            writeDebugLog('Manual log download triggered via UI button.');
+            
+            // --- Diagnostic Checks ---
+            try {
+                const agentView = getAgentView();
+                writeDebugLog('Diagnostic: Agent View found? ' + (agentView !== document ? 'Yes' : 'No (Fallback to document)'));
+                
+                if (typeof findButtonByAttribute !== 'undefined') {
+                    const sendBtn = findButtonByAttribute('Send') || agentView.querySelector('[data-testid="send-button"]');
+                    writeDebugLog('Diagnostic: Send button found? ' + (sendBtn ? 'Yes' : 'No'));
+                    const cancelBtn = findButtonByAttribute('Cancel');
+                    writeDebugLog('Diagnostic: Cancel button found? ' + (cancelBtn ? 'Yes' : 'No'));
+                } else {
+                    // Manual search if function is not injected
+                    const buttons = Array.from(agentView.querySelectorAll('button, a.monaco-button, div.monaco-button'));
+                    const sendBtn = buttons.find(b => /send/i.test(b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent || '')) || agentView.querySelector('[data-testid="send-button"]');
+                    writeDebugLog('Diagnostic: Send button found (manual)? ' + (sendBtn ? 'Yes' : 'No'));
+                    const cancelBtn = buttons.find(b => /cancel/i.test(b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent || ''));
+                    writeDebugLog('Diagnostic: Cancel button found (manual)? ' + (cancelBtn ? 'Yes' : 'No'));
+                }
+                
+                const inputField = agentView.querySelector('div[contenteditable="true"][data-lexical-editor="true"], textarea[placeholder*="Ask anything" i], input[placeholder*="Ask anything" i]');
+                writeDebugLog('Diagnostic: Input field found? ' + (inputField ? 'Yes' : 'No'));
+            } catch (err) {
+                writeDebugLog('Diagnostic checks failed: ' + err.message);
+            }
+            // -------------------------
+
+            const htmlContent = formatHTML(document.documentElement.outerHTML);
+            const timestamp = Date.now();
+            
+            if (FileSystemAccess.fs && FileSystemAccess.path) {
+                const dumpPath = FileSystemAccess.path.join(FileSystemAccess.basePath, 'antigravity-agent-view-dump-' + timestamp + '.html');
+                FileSystemAccess.fs.writeFileSync(dumpPath, htmlContent, 'utf8');
+                writeDebugLog('HTML dump saved to ' + dumpPath);
+            } else {
+                downloadFileBrowser('antigravity-agent-view-dump-' + timestamp + '.html', htmlContent);
+                downloadFileBrowser('antigravity-patch-debug-' + timestamp + '.log', logBuffer.join(''));
+            }
+        };
+        
+        document.body.appendChild(btn);
+    }
+    
+    createDebugButton();
+    function formatHTML(html) {
+        let tab = '  ';
+        let result = '';
+        let indent = '';
+        let raw = html.trim();
+        if (raw.startsWith('<') && raw.endsWith('>')) {
+            raw = raw.substring(1, raw.length - 1);
+        }
+        
+        raw.split(/>\\s*</).forEach(function(element) {
+            if (element.match(/^\\/\\w/)) {
+                indent = indent.substring(tab.length);
+            }
+            result += indent + '<' + element + '>\\n';
+            if (element.match(/^<?\\w[^>]*[^\\/]$/) && !element.startsWith("input") && !element.startsWith("img") && !element.startsWith("link") && !element.startsWith("meta") && !element.startsWith("br") && !element.startsWith("hr")) { 
+                indent += tab;              
+            }
+        });
+        return result.trim();
+    }
+    ` : `
+    function writeDebugLog(msg, element = null) {
+        // Debug mode disabled
+    }
+    function dumpHtml() {}
+    `}
+
+    /**
+     * Robust method to locate the Agent View container to avoid clicking elements elsewhere.
+     */
+    function getAgentView() {
+        let agentView = document.querySelector('.antigravity-agent-side-panel');
+
+        if (!agentView) {
+            agentView = document.getElementById('antigravity.agentViewContainerId');
+        }
+
+        if (!agentView) {
+            const inputBox = document.getElementById('antigravity.agentSidePanelInputBox');
+            if (inputBox) agentView = inputBox.closest('.monaco-pane-view, .pane, .split-view-view, .composite, .antigravity-agent-side-panel');
+        }
+
+        if (!agentView) {
+            const agentHeader = document.querySelector('.pane-header[aria-label*="Agent" i], .title[aria-label*="Agent" i]');
+            if (agentHeader) agentView = agentHeader.closest('.monaco-pane-view, .pane, .split-view-view, .composite, .antigravity-agent-side-panel');
+        }
+        
+        if (!agentView) {
+            const chatBg = document.querySelector('.bg-ide-chat-background');
+            if (chatBg) agentView = chatBg.closest('.monaco-pane-view, .pane, .split-view-view, .composite, .antigravity-agent-side-panel') || chatBg.parentElement;
+        }
+
+        if (!agentView) {
+            agentView = document;
+        }
+        
+        return agentView;
+    }
+
     ${includeContinue ? `
     /**
      * Helper to find buttons by title, aria-label, or text.
      */
     function findButtonByAttribute(searchText) {
-        const elements = Array.from(document.querySelectorAll('button, a.monaco-button, div.monaco-button'));
+        const agentView = getAgentView();
+        const elements = Array.from(agentView.querySelectorAll('button, a.monaco-button, div.monaco-button'));
         const regex = new RegExp(searchText, 'i');
         return elements.find(el => {
             const title = el.getAttribute('title') || '';
@@ -64,8 +283,10 @@ function generateInjectionScript(choice, hideCorruption) {
      * Sets value and triggers events for an input field.
      */
     function setInputValue(selector, value) {
-        const input = document.querySelector(selector);
+        const agentView = getAgentView();
+        const input = agentView.querySelector(selector);
         if (input) {
+            writeDebugLog(\`Setting input value "\${value}" for selector "\${selector}"\`, input);
             input.focus();
             input.value = value;
             input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -83,37 +304,48 @@ function generateInjectionScript(choice, hideCorruption) {
         isHandlingSequence = true;
         
         console.log('Antigravity Auto-Retry: "Running" state detected for > 30s. Executing recovery...');
+        writeDebugLog('Starting recovery sequence due to "Running" hangup.');
 
         try {
             // 1. Click Cancel
             const cancelButton = findButtonByAttribute('Cancel');
             if (cancelButton) {
                 console.log('Antigravity Auto-Retry: Clicking Cancel button.');
+                writeDebugLog('Clicking Cancel button', cancelButton);
                 cancelButton.click();
+            } else {
+                writeDebugLog('Cancel button not found during recovery.');
             }
 
             // 2. Wait 3 seconds
             await new Promise(r => setTimeout(r, 3000));
 
             // 3. Type "continue"
-            const inputFound = setInputValue('textarea[placeholder*="Ask anything" i], input[placeholder*="Ask anything" i]', 'continue');
+            const inputFound = setInputValue('div[contenteditable="true"][data-lexical-editor="true"], textarea[placeholder*="Ask anything" i], input[placeholder*="Ask anything" i]', 'continue');
             if (inputFound) {
                 console.log('Antigravity Auto-Retry: Input "continue" set.');
+            } else {
+                writeDebugLog('Input field not found during recovery.');
             }
 
             // 4. Wait 3 seconds
             await new Promise(r => setTimeout(r, 3000));
 
             // 5. Click Send
-            const sendButton = findButtonByAttribute('Send');
+            const sendButton = findButtonByAttribute('Send') || getAgentView().querySelector('[data-testid="send-button"]');
             if (sendButton) {
                 console.log('Antigravity Auto-Retry: Clicking Send button.');
+                writeDebugLog('Clicking Send button', sendButton);
                 sendButton.click();
+            } else {
+                writeDebugLog('Send button not found during recovery.');
             }
 
         } catch (e) {
             console.error('Antigravity Auto-Retry: Error during recovery sequence:', e);
+            writeDebugLog(\`Error during recovery sequence: \${e.message}\`);
         } finally {
+            writeDebugLog('Recovery sequence finished.');
             runningCounter = 0;
             hasSeenDots = false;
             isHandlingSequence = false;
@@ -125,7 +357,9 @@ function generateInjectionScript(choice, hideCorruption) {
         if (intervalId) return;
         intervalId = setInterval(() => {
             try {
-                const buttons = Array.from(document.querySelectorAll("button, a.monaco-button"));
+                const agentView = getAgentView();
+                const buttons = Array.from(agentView.querySelectorAll("button, a.monaco-button"));
+
 
                 ${includeRetry ? `
                 // --- Part 1: Auto Retry logic ---
@@ -137,6 +371,7 @@ function generateInjectionScript(choice, hideCorruption) {
                 });
                 if (retryButton && !(retryButton.disabled)) {
                     console.log("Antigravity Auto-Retry: Found Retry button. Clicking...");
+                    writeDebugLog('Clicking Retry button', retryButton);
                     clickedButtons.add(retryButton);
                     retryButton.click();
                 }
@@ -150,6 +385,7 @@ function generateInjectionScript(choice, hideCorruption) {
                 });
                 if (allowButton && !(allowButton.disabled)) {
                     console.log("Antigravity Auto-Retry: Found Allow button. Clicking...");
+                    writeDebugLog('Clicking Allow button', allowButton);
                     clickedButtons.add(allowButton);
                     allowButton.click();
                 }
@@ -163,6 +399,7 @@ function generateInjectionScript(choice, hideCorruption) {
                 });
                 if (runButton && !(runButton.disabled)) {
                     console.log("Antigravity Auto-Retry: Found Run button. Clicking...");
+                    writeDebugLog('Clicking Run button', runButton);
                     clickedButtons.add(runButton);
                     runButton.click();
                 }
@@ -171,7 +408,8 @@ function generateInjectionScript(choice, hideCorruption) {
                 ${includeContinue ? `
                 // --- Part 4: "Running" monitoring logic (Auto Continue) ---
                 if (!isHandlingSequence) {
-                    const bodyText = document.body.innerText || '';
+                    const viewElement = agentView === document ? document.body : agentView;
+                    const bodyText = viewElement.innerText || '';
                     const hasDots = /Running[.]{1,3}/.test(bodyText);
                     const hasPlain = bodyText.includes('Running');
 
@@ -182,10 +420,17 @@ function generateInjectionScript(choice, hideCorruption) {
                     // Count if we see dots, OR if we have seen dots in this streak and still see plain "Running"
                     if (hasDots || (hasSeenDots && hasPlain)) {
                         runningCounter++;
+                        if (runningCounter === 1) {
+                            writeDebugLog('Detected "Running" state. Starting counter.');
+                        }
                         if (runningCounter >= 3000) { // 300 seconds at 100ms interval
+                            writeDebugLog('Running counter reached 3000. Triggering recovery.');
                             executeRecoverySequence();
                         }
                     } else {
+                        if (runningCounter > 0) {
+                            writeDebugLog(\`Running state cleared. Counter was at \${runningCounter}.\`);
+                        }
                         runningCounter = 0;
                         hasSeenDots = false;
                     }
@@ -202,12 +447,16 @@ function generateInjectionScript(choice, hideCorruption) {
                         el.style.display = 'none';
                         // Also try to find the parent toast container and hide it
                         const toast = el.closest('.notification-toast-container');
-                        if (toast) toast.style.display = 'none';
+                        if (toast && toast.style.display !== 'none') {
+                            writeDebugLog('Hiding corruption warning toast', toast);
+                            toast.style.display = 'none';
+                        }
                     }
                 });
                 ` : ''}
             } catch (e) {
                 console.error("Antigravity Auto-Retry loop error:", e);
+                writeDebugLog(\`Auto-Retry loop error: \${e.message}\`);
             }
         }, 100);
     }
@@ -254,9 +503,12 @@ async function getPatchChoice() {
             }
 
             rl.question('Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: n]: ', (hideAnswer) => {
-                rl.close();
                 const hideCorruption = hideAnswer.toLowerCase().startsWith('y');
-                resolve({ choice, hideCorruption });
+                rl.question('Would you like to enable debug mode? Logs and HTML dumps will be saved to your Downloads folder. (y/n) [Default: n]: ', (debugAnswer) => {
+                    rl.close();
+                    const enableDebug = debugAnswer.toLowerCase().startsWith('y');
+                    resolve({ choice, hideCorruption, enableDebug });
+                });
             });
         });
     });
@@ -313,11 +565,11 @@ function getWorkbenchPath() {
 async function applyPatch() {
     log('--- Antigravity Retry Patch Utility ---');
 
-    const { choice, hideCorruption } = await getPatchChoice();
+    const { choice, hideCorruption, enableDebug } = await getPatchChoice();
     if (choice === 'reset_all') {
         log(`Selected mode: RESET ALL`);
     } else {
-        log(`Selected mode: ${choice.toUpperCase()}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}`);
+        log(`Selected mode: ${choice.toUpperCase()}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}${enableDebug ? ' + DEBUG MODE' : ''}`);
     }
 
     const workbenchPath = getWorkbenchPath();
@@ -385,7 +637,7 @@ async function applyPatch() {
 
         log('Preparing patched content...');
         let html = cleanHtml;
-        const injectionScript = generateInjectionScript(choice, hideCorruption);
+        const injectionScript = generateInjectionScript(choice, hideCorruption, enableDebug);
 
         // 2. Inject 'unsafe-inline' into CSP (Content Security Policy)
         html = html.replace(/(script-src\s+[^;]*)/, (match) => {
