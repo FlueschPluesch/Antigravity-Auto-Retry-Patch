@@ -181,7 +181,7 @@ function generateInjectionScript(choice) {
                     // Count if we see dots, OR if we have seen dots in this streak and still see plain "Running"
                     if (hasDots || (hasSeenDots && hasPlain)) {
                         runningCounter++;
-                        if (runningCounter >= 300) { // 30 seconds at 100ms interval
+                        if (runningCounter >= 3000) { // 300 seconds at 100ms interval
                             executeRecoverySequence();
                         }
                     } else {
