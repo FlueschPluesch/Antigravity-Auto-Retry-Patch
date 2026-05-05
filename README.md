@@ -25,35 +25,37 @@ When working with AI agents or long-running tasks in Antigravity, you might enco
   - Handles elevation (sudo/Admin) elegantly.
 
 ## Prerequisites
-- **Node.js**: You must have Node.js installed on your system.
 - **Antigravity IDE**: The IDE must be installed.
+- *(Optional)* **Node.js**: Only required if you choose the manual installation method.
 
-## Usage
+## Installation / Usage
 
-### 1. Run the patch
-Open your terminal or command prompt in the folder containing `applyAutoRetryContinueAllowPatch.js` and execute:
+### Step 1: Run the patch
 
-#### **Linux / macOS**
-```bash
-sudo node applyAutoRetryContinueAllowPatch.js
-```
-*(The script will also attempt to call `sudo` internally if you forget, but it's recommended to run it with privileges directly.)*
+**Option A: Automatic One-Click Scripts (Recommended)**
+These scripts temporarily download a portable version of Node.js to apply the patch, leaving your system completely clean without a permanent Node.js installation.
 
-#### **Windows**
-1. Right-click your terminal (PowerShell or Command Prompt) and select **"Run as Administrator"**.
-2. Run:
-   ```cmd
-   node applyAutoRetryContinueAllowPatch.js
-   ```
+* **Windows**: Simply double-click `install_windows.bat`.
+* **macOS**: 
+  1. Open a terminal in the folder and make the script executable: `chmod +x install_mac.command`
+  2. Double-click `install_mac.command` in Finder.
+* **Linux**:
+  1. Open a terminal in the folder and make the script executable: `chmod +x install_linux.sh`
+  2. Run `./install_linux.sh` in the terminal (or double-click if your file manager supports it).
 
-### 2. Configure your options
+**Option B: Manual Installation (Requires installed Node.js)**
+If you already have Node.js installed globally, open your terminal in the folder containing `applyAutoRetryContinueAllowPatch.js` and execute:
+* **Windows**: Right-click your terminal and select **"Run as Administrator"**, then run `node applyAutoRetryContinueAllowPatch.js`
+* **Linux / macOS**: Run `sudo node applyAutoRetryContinueAllowPatch.js`
+
+### Step 2: Configure your options
 The script will present a menu. Choose the desired combination of features:
 1) All (Retry + Continue + Allow + Run) [Default]
 2) Retry + Continue + Allow
 3) Retry + Allow
 ...and more.
 
-### 3. Restart Antigravity
+### Step 3: Restart Antigravity
 After the script reports success, simply restart the Antigravity IDE. The selected logic will now be active in the workbench.
 
 ## How it Works
