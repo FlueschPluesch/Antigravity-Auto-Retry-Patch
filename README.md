@@ -35,7 +35,7 @@ When working with AI agents or long-running tasks in Antigravity, you might enco
 **Option A: Automatic One-Click Scripts (Recommended)**
 These scripts temporarily download a portable version of Node.js to apply the patch, leaving your system completely clean without a permanent Node.js installation.
 
-* **Windows**: Simply double-click `install_windows.bat`.
+* **Windows**: Simply double-click `install_windows.bat`. *(Note: If you receive a "Code 1" or permission error, right-click the file and select **"Run as Administrator"**)*.
 * **macOS**: 
   1. Open a terminal in the folder and make the script executable: `chmod +x install_mac.command`
   2. Double-click `install_mac.command` in Finder.

@@ -46,6 +46,11 @@ if %EXIT_CODE% EQU 0 (
     echo Patch process finished successfully!
 ) else (
     echo Patch process finished with errors ^(Code %EXIT_CODE%^).
+    if %EXIT_CODE% EQU 1 (
+        echo.
+        echo HINT: If you encountered a permission error, please right-click on 
+        echo this install_windows.bat file and select "Run as Administrator".
+    )
 )
 echo ========================================================
 pause
