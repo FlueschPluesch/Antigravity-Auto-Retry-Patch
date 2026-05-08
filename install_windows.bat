@@ -15,9 +15,14 @@ set "NODE_URL=https://nodejs.org/dist/latest/win-x64/node.exe"
 set "TMP_DIR=%~dp0.tmp_node"
 set "NODE_EXE=%TMP_DIR%\node.exe"
 
-if not exist "%TMP_DIR%" mkdir "%TMP_DIR%"
+if not exist "%TMP_DIR%" (
+    echo Creating temporary directory at "%TMP_DIR%"...
+    mkdir "%TMP_DIR%"
+)
 
 echo [1/3] Downloading portable Node.js...
+echo Source URL: %NODE_URL%
+echo Destination: %NODE_EXE%
 :: Using built-in Windows 10/11 curl
 curl.exe -# -L -o "%NODE_EXE%" "%NODE_URL%"
 
@@ -32,12 +37,14 @@ if not exist "%NODE_EXE%" (
 
 echo.
 echo [2/3] Applying the patch...
+echo Executing script: applyAutoRetryContinueAllowPatch.js using portable Node.js...
 echo.
 "%NODE_EXE%" applyAutoRetryContinueAllowPatch.js
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
 echo [3/3] Cleaning up temporary files...
+echo Removing directory "%TMP_DIR%"...
 rmdir /s /q "%TMP_DIR%"
 
 echo.

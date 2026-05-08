@@ -12,6 +12,7 @@ echo "the patch without modifying your system installations."
 echo
 
 TMP_DIR="$(pwd)/.tmp_node"
+echo "Creating temporary directory at $TMP_DIR..."
 mkdir -p "$TMP_DIR"
 
 # Determine architecture (Apple Silicon vs Intel)
@@ -42,6 +43,8 @@ NODE_URL="https://nodejs.org/dist/latest/$LATEST_TARBALL"
 TAR_FILE="$TMP_DIR/node_latest.tar.gz"
 
 echo "Downloading $LATEST_TARBALL..."
+echo "Source URL: $NODE_URL"
+echo "Destination: $TAR_FILE"
 curl -# -L -o "$TAR_FILE" "$NODE_URL"
 
 if [ ! -f "$TAR_FILE" ]; then
@@ -53,7 +56,7 @@ if [ ! -f "$TAR_FILE" ]; then
     exit 1
 fi
 
-echo "Extracting Node.js..."
+echo "Extracting Node.js to $TMP_DIR..."
 tar -xzf "$TAR_FILE" -C "$TMP_DIR"
 
 # Find the node executable inside the extracted folder
@@ -76,12 +79,14 @@ xattr -d com.apple.quarantine "$NODE_EXE" 2>/dev/null
 
 echo
 echo "[2/3] Applying the patch..."
+echo "Executing script: applyAutoRetryContinueAllowPatch.js using portable Node.js..."
 echo
 "$NODE_EXE" applyAutoRetryContinueAllowPatch.js
 EXIT_CODE=$?
 
 echo
 echo "[3/3] Cleaning up temporary files..."
+echo "Removing directory $TMP_DIR..."
 rm -rf "$TMP_DIR"
 
 echo
