@@ -4,7 +4,7 @@ This utility provides a robust, cross-platform patch for the **Antigravity IDE**
 
 ## Why is this useful?
 When working with AI agents or long-running tasks in Antigravity, you might encounter transient network failures, quota limits, or "Running" hangups. This script automates the process of clicking "Retry", "Allow", and "Run" buttons, and even handles situations where the agent appears to be stuck.
-
+ 
 ## Features
 - **Auto-Retry**: Automatically clicks "Retry", "Try Again", or "Wiederholen" buttons.
 - **Auto-Continue (Recovery Sequence)**: Monitors the "Running..." state. If it persists for more than 30 seconds, the script automatically:

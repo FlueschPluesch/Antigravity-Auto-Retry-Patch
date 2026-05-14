@@ -33,12 +33,12 @@ function getSshConfigEntries() {
         const osHome = process.env.HOME || process.env.USERPROFILE || '';
         const sshConfigPath = path.join(osHome, '.ssh', 'config');
         if (!fs.existsSync(sshConfigPath)) return [];
-        
+
         const content = fs.readFileSync(sshConfigPath, 'utf8');
         const lines = content.split(/\r?\n/);
         const entries = [];
         let currentEntry = null;
-        
+
         for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed.toLowerCase().startsWith('host ')) {
@@ -65,7 +65,7 @@ function ensureSettings() {
     try {
         const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
         const settingsPath = path.join(appData, 'Antigravity', 'User', 'settings.json');
-        
+
         if (fs.existsSync(settingsPath)) {
             let settings = {};
             try {
@@ -73,14 +73,14 @@ function ensureSettings() {
             } catch (e) {
                 warn('Could not parse settings.json, creating new one.');
             }
-            
+
             let changed = false;
             if (settings['remote.SSH.showLoginTerminal'] !== true) {
                 settings['remote.SSH.showLoginTerminal'] = true;
                 changed = true;
                 log('Setting "remote.SSH.showLoginTerminal" to true in settings.json');
             }
-            
+
             if (changed) {
                 fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
                 log('Successfully updated settings.json');
@@ -182,9 +182,9 @@ async function promptForSshPasswords(rl) {
         warn('No valid SSH hosts found in ~/.ssh/config.');
         return {};
     }
-    
+
     let sshPasswords = loadSavedPasswords();
-    
+
     while (true) {
         console.log('\n\x1b[36m--- SSH Password Configuration ---\x1b[0m');
         console.log('Found SSH entries in your config:');
@@ -196,10 +196,10 @@ async function promptForSshPasswords(rl) {
             console.log(`${i + 1}) ${aliasStr}${hostNameStr}${status}`);
         });
         console.log('c) Done / Continue to next step');
-        
+
         const answer = await new Promise(r => rl.question('\nSelect an entry number to add/change a password (or "c" to finish): ', r));
         if (answer.toLowerCase() === 'c') break;
-        
+
         const idx = parseInt(answer) - 1;
         if (idx >= 0 && idx < entries.length) {
             const entry = entries[idx];
@@ -578,7 +578,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                     retryButton.click();
                 }
                 ` : ''}
-
+ 
                 ${includeAllow ? `
                 // --- Part 2: Auto Allow logic ---
                 const allowButton = buttons.find(button => {
@@ -769,7 +769,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
 function detectCurrentState(workbenchPath) {
     const state = { ssh: false, corruption: false, debug: false };
     if (!workbenchPath || !fs.existsSync(workbenchPath)) return state;
-    
+
     try {
         const content = fs.readFileSync(workbenchPath, 'utf8');
         const match = content.match(/PATCH_CONFIG: ({.*?}) -->/);
@@ -780,20 +780,20 @@ function detectCurrentState(workbenchPath) {
                 state.corruption = !!config.corruption;
                 state.debug = !!config.debug;
                 return state;
-            } catch (e) {}
+            } catch (e) { }
         }
-        
+
         // Fallback for older patches
         state.ssh = content.includes('Part 6: Remote-SSH-Auto-Login');
         state.corruption = content.includes('Part 5: Hide corruption warning');
         state.debug = content.includes('Diagnostic Key Tracker');
-    } catch (e) {}
+    } catch (e) { }
     return state;
 }
 
 async function getPatchChoice(workbenchPath) {
     const currentState = detectCurrentState(workbenchPath);
-    
+
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -834,7 +834,7 @@ async function getPatchChoice(workbenchPath) {
             rl.question(`Would you like to enable "Remote-SSH-Auto-Login"? (y/n) [Default: ${sshDefault}]: `, async (sshAnswer) => {
                 const sshAnswerLower = sshAnswer.toLowerCase().trim();
                 const enableSshAutoLogin = sshAnswerLower ? sshAnswerLower.startsWith('y') : currentState.ssh;
-                
+
                 let sshPasswords = {};
                 if (enableSshAutoLogin) {
                     // Only enter the menu if the user EXPLICITLY typed 'y'
@@ -846,11 +846,11 @@ async function getPatchChoice(workbenchPath) {
                     }
                     ensureSettings();
                 }
-                
+
                 const corruptionDefault = currentState.corruption ? 'y' : 'n';
                 rl.question(`Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: ${corruptionDefault}]: `, (hideAnswer) => {
                     const hideCorruption = hideAnswer ? hideAnswer.toLowerCase().startsWith('y') : currentState.corruption;
-                    
+
                     const debugDefault = currentState.debug ? 'y' : 'n';
                     rl.question(`Would you like to enable debug mode? (y/n) [Default: ${debugDefault}]: `, (debugAnswer) => {
                         rl.close();
