@@ -1,0 +1,6 @@
+ssh_passwords.json
+node_modules/
+.tmp_node/
+*.bak
+antigravity-patch-debug.log
+antigravity-agent-view-dump-*.html

@@ -137,10 +137,49 @@ function decrypt(text) {
 }
 
 /**
+ * Determines the system-specific path for the password storage.
+ */
+function getPasswordFilePath() {
+    const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
+    const folderPath = path.join(appData, 'Antigravity-Auto-Retry-Patch');
+    
+    // Ensure the directory exists
+    if (!fs.existsSync(folderPath)) {
+        try {
+            fs.mkdirSync(folderPath, { recursive: true });
+        } catch (e) {
+            // Fallback to local if folder creation fails
+            return path.join(__dirname, 'ssh_passwords.json');
+        }
+    }
+    
+    return path.join(folderPath, 'ssh_passwords.json');
+}
+
+/**
+ * Migrates the password file from the local directory to the system AppData folder if needed.
+ */
+function migratePasswords() {
+    const localPath = path.join(__dirname, 'ssh_passwords.json');
+    const systemPath = getPasswordFilePath();
+    
+    // Only migrate if local exists and system doesn't (or they are the same which is unlikely but handled)
+    if (fs.existsSync(localPath) && localPath !== systemPath && !fs.existsSync(systemPath)) {
+        try {
+            fs.copyFileSync(localPath, systemPath);
+            log(`Migrated passwords to system AppData folder.`);
+        } catch (e) {
+            warn('Failed to migrate passwords to AppData: ' + e.message);
+        }
+    }
+}
+
+/**
  * Loads saved SSH passwords from a local file and decrypts them.
  */
 function loadSavedPasswords() {
-    const p = path.join(__dirname, 'ssh_passwords.json');
+    migratePasswords();
+    const p = getPasswordFilePath();
     if (fs.existsSync(p)) {
         try {
             const encryptedData = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -161,7 +200,7 @@ function loadSavedPasswords() {
  * Encrypts and saves SSH passwords to a local file.
  */
 function savePasswords(passwords) {
-    const p = path.join(__dirname, 'ssh_passwords.json');
+    const p = getPasswordFilePath();
     try {
         const encryptedData = {};
         for (const key in passwords) {
