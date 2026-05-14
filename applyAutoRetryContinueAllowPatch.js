@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const readline = require('readline');
+const os = require('os');
 
 /**
  * Antigravity Auto-Retry Patch Utility
@@ -25,17 +26,226 @@ function error(message) {
 }
 
 /**
+ * Reads SSH config and extracts host entries with their aliases and HostNames.
+ */
+function getSshConfigEntries() {
+    try {
+        const osHome = process.env.HOME || process.env.USERPROFILE || '';
+        const sshConfigPath = path.join(osHome, '.ssh', 'config');
+        if (!fs.existsSync(sshConfigPath)) return [];
+        
+        const content = fs.readFileSync(sshConfigPath, 'utf8');
+        const lines = content.split(/\r?\n/);
+        const entries = [];
+        let currentEntry = null;
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.toLowerCase().startsWith('host ')) {
+                if (currentEntry) entries.push(currentEntry);
+                currentEntry = {
+                    hosts: trimmed.substring(5).trim().split(/\s+/).filter(h => h && h !== '*' && !h.includes('?') && !h.includes('!')),
+                    hostname: null
+                };
+            } else if (currentEntry && trimmed.toLowerCase().startsWith('hostname ')) {
+                currentEntry.hostname = trimmed.substring(9).trim();
+            }
+        }
+        if (currentEntry && currentEntry.hosts.length > 0) entries.push(currentEntry);
+        return entries;
+    } catch (e) {
+        return [];
+    }
+}
+
+/**
+ * Ensures that necessary VS Code / Antigravity settings are set for auto-login.
+ */
+function ensureSettings() {
+    try {
+        const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
+        const settingsPath = path.join(appData, 'Antigravity', 'User', 'settings.json');
+        
+        if (fs.existsSync(settingsPath)) {
+            let settings = {};
+            try {
+                settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            } catch (e) {
+                warn('Could not parse settings.json, creating new one.');
+            }
+            
+            let changed = false;
+            if (settings['remote.SSH.showLoginTerminal'] !== true) {
+                settings['remote.SSH.showLoginTerminal'] = true;
+                changed = true;
+                log('Setting "remote.SSH.showLoginTerminal" to true in settings.json');
+            }
+            
+            if (changed) {
+                fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 4), 'utf8');
+                log('Successfully updated settings.json');
+            }
+        } else {
+            warn(`Settings file not found at ${settingsPath}. Please ensure "remote.SSH.showLoginTerminal" is true manually.`);
+        }
+    } catch (e) {
+        warn('Error updating settings.json: ' + e.message);
+    }
+}
+
+const crypto = require('crypto');
+
+// --- Encryption Helpers ---
+const ENCRYPTION_ALGORITHM = 'aes-256-cbc';
+
+/**
+ * Generates a machine-specific encryption key.
+ */
+function getEncryptionKey() {
+    const user = os.userInfo().username || 'default';
+    const host = os.hostname() || 'machine';
+    const salt = 'antigravity-secret-salt';
+    return crypto.scryptSync(user + host + salt, 'salt', 32);
+}
+
+/**
+ * Encrypts a string using AES-256-CBC.
+ */
+function encrypt(text) {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, getEncryptionKey(), iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return iv.toString('hex') + ':' + encrypted;
+}
+
+/**
+ * Decrypts a string using AES-256-CBC.
+ */
+function decrypt(text) {
+    try {
+        const parts = text.split(':');
+        const iv = Buffer.from(parts.shift(), 'hex');
+        const encryptedText = Buffer.from(parts.join(':'), 'hex');
+        const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, getEncryptionKey(), iv);
+        let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Loads saved SSH passwords from a local file and decrypts them.
+ */
+function loadSavedPasswords() {
+    const p = path.join(__dirname, 'ssh_passwords.json');
+    if (fs.existsSync(p)) {
+        try {
+            const encryptedData = JSON.parse(fs.readFileSync(p, 'utf8'));
+            const decryptedData = {};
+            for (const key in encryptedData) {
+                const decrypted = decrypt(encryptedData[key]);
+                if (decrypted) decryptedData[key] = decrypted;
+            }
+            return decryptedData;
+        } catch (e) {
+            return {};
+        }
+    }
+    return {};
+}
+
+/**
+ * Encrypts and saves SSH passwords to a local file.
+ */
+function savePasswords(passwords) {
+    const p = path.join(__dirname, 'ssh_passwords.json');
+    try {
+        const encryptedData = {};
+        for (const key in passwords) {
+            encryptedData[key] = encrypt(passwords[key]);
+        }
+        fs.writeFileSync(p, JSON.stringify(encryptedData, null, 4), 'utf8');
+    } catch (e) {
+        warn('Could not save passwords: ' + e.message);
+    }
+}
+
+/**
+ * Prompt user for passwords for specific hosts.
+ */
+async function promptForSshPasswords(rl) {
+    const entries = getSshConfigEntries();
+    if (entries.length === 0) {
+        warn('No valid SSH hosts found in ~/.ssh/config.');
+        return {};
+    }
+    
+    let sshPasswords = loadSavedPasswords();
+    
+    while (true) {
+        console.log('\n\x1b[36m--- SSH Password Configuration ---\x1b[0m');
+        console.log('Found SSH entries in your config:');
+        entries.forEach((e, i) => {
+            const aliasStr = e.hosts.join(', ');
+            const hostNameStr = e.hostname ? ` (HostName: ${e.hostname})` : '';
+            const isSet = e.hosts.some(h => sshPasswords[h]) || (e.hostname && sshPasswords[e.hostname]);
+            const status = isSet ? '\x1b[32m [SET]\x1b[0m' : '\x1b[90m [NOT SET]\x1b[0m';
+            console.log(`${i + 1}) ${aliasStr}${hostNameStr}${status}`);
+        });
+        console.log('c) Done / Continue to next step');
+        
+        const answer = await new Promise(r => rl.question('\nSelect an entry number to add/change a password (or "c" to finish): ', r));
+        if (answer.toLowerCase() === 'c') break;
+        
+        const idx = parseInt(answer) - 1;
+        if (idx >= 0 && idx < entries.length) {
+            const entry = entries[idx];
+            const primaryHost = entry.hosts[0];
+            const password = await new Promise(r => rl.question(`Enter password for "${primaryHost}" (leave empty to keep current): `, r));
+            if (password) {
+                const b64 = Buffer.from(password).toString('base64');
+                // Map to all aliases
+                entry.hosts.forEach(h => {
+                    sshPasswords[h] = b64;
+                });
+                // Map to the actual HostName if available
+                if (entry.hostname) {
+                    sshPasswords[entry.hostname] = b64;
+                }
+                savePasswords(sshPasswords);
+                log(`Password updated and saved for ${primaryHost}.`);
+            }
+        } else {
+            console.log('\x1b[31mInvalid selection.\x1b[0m');
+        }
+    }
+    return sshPasswords;
+}
+
+/**
  * Generates the injection script based on the user's choice.
  */
-function generateInjectionScript(choice, hideCorruption, enableDebug) {
+function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords = {}) {
     const includeRetry = choice === 'all' || choice.includes('retry');
     const includeContinue = choice === 'all' || choice.includes('continue');
     const includeAllow = choice === 'all' || choice.includes('allow');
     const includeRun = choice === 'all' || choice.includes('run');
     const includeHideCorruption = hideCorruption;
+    const includeSshAutoLogin = enableSshAutoLogin;
+
+    const configMetadata = {
+        choice,
+        ssh: enableSshAutoLogin,
+        corruption: hideCorruption,
+        debug: enableDebug
+    };
 
     return `
 <!-- Antigravity Auto-Retry Patch Start -->
+<!-- PATCH_CONFIG: ${JSON.stringify(configMetadata)} -->
 <script type="text/javascript">
 (function() {
     console.log("Antigravity Auto-Retry: Direct Injection successful.");
@@ -45,8 +255,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
     ${includeContinue ? 'let hasSeenDots = false;' : ''}
     ${includeContinue ? 'let isHandlingSequence = false;' : ''}
 
-    ${enableDebug ? `
-    const FileSystemAccess = (function() {
+    const AntigravityFS = (function() {
         let fs = null, path = null, basePath = '';
         try {
             if (typeof window.requireNode !== 'undefined') {
@@ -70,6 +279,55 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
         return { fs, path, basePath };
     })();
 
+    function writeDebugLog(msg, element = null) {
+        if (!${enableDebug}) return;
+        try {
+            const timestamp = new Date().toISOString();
+            let logMsg = \`[\${timestamp}] \${msg}\`;
+            if (element) {
+                logMsg += \` | Element path: \${getElementPath(element)}\`;
+            }
+            logMsg += '\\n';
+            
+            console.log("Antigravity Patch Debug:", logMsg.trim());
+            if (typeof logBuffer !== 'undefined') logBuffer.push(logMsg);
+
+            if (AntigravityFS.fs && AntigravityFS.path) {
+                const logPath = AntigravityFS.path.join(AntigravityFS.basePath, 'antigravity-patch-debug.log');
+                AntigravityFS.fs.appendFileSync(logPath, logMsg);
+            }
+        } catch (e) {
+            console.error("Antigravity Patch Debug error:", e);
+        }
+    }
+
+    function downloadFileBrowser(filename, content) {
+        try {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch(e) {
+            console.error("Antigravity Browser Download Error:", e);
+        }
+    }
+
+    // Diagnostic Key Tracker
+    window.addEventListener('keydown', (e) => {
+        if (!${enableDebug}) return;
+        try {
+            const target = e.target;
+            const msg = \`[KEY TRACKER] Key: "\${e.key}" | Code: "\${e.code}" | KeyCode: \${e.keyCode} | Target: \${target ? target.tagName : 'none'} | Path: \${getElementPath(target)}\`;
+            writeDebugLog(msg);
+        } catch (err) {}
+    }, true);
+
+    ${enableDebug ? `
     function getElementPath(el) {
         if (!el) return 'unknown';
         let path = [];
@@ -101,43 +359,6 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
 
     let logBuffer = [];
 
-    function downloadFileBrowser(filename, content) {
-        try {
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch(e) {
-            console.error("Antigravity Browser Download Error:", e);
-        }
-    }
-
-    function writeDebugLog(msg, element = null) {
-        try {
-            const timestamp = new Date().toISOString();
-            let logMsg = \`[\${timestamp}] \${msg}\`;
-            if (element) {
-                logMsg += \` | Element path: \${getElementPath(element)}\`;
-            }
-            logMsg += '\\n';
-            
-            console.log("Antigravity Patch Debug:", logMsg.trim());
-            logBuffer.push(logMsg);
-
-            if (FileSystemAccess.fs && FileSystemAccess.path) {
-                const logPath = FileSystemAccess.path.join(FileSystemAccess.basePath, 'antigravity-patch-debug.log');
-                FileSystemAccess.fs.appendFileSync(logPath, logMsg);
-            }
-        } catch (e) {
-            console.error("Antigravity Patch Debug error:", e);
-        }
-    }
-
     // Add floating button for manual log download
     function createDebugButton() {
         if (document.getElementById('antigravity-debug-download-btn')) return;
@@ -166,19 +387,9 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
                 const agentView = getAgentView();
                 writeDebugLog('Diagnostic: Agent View found? ' + (agentView !== document ? 'Yes' : 'No (Fallback to document)'));
                 
-                if (typeof findButtonByAttribute !== 'undefined') {
-                    const sendBtn = findButtonByAttribute('Send') || agentView.querySelector('[data-testid="send-button"]');
-                    writeDebugLog('Diagnostic: Send button found? ' + (sendBtn ? 'Yes' : 'No'));
-                    const cancelBtn = findButtonByAttribute('Cancel');
-                    writeDebugLog('Diagnostic: Cancel button found? ' + (cancelBtn ? 'Yes' : 'No'));
-                } else {
-                    // Manual search if function is not injected
-                    const buttons = Array.from(agentView.querySelectorAll('button, a.monaco-button, div.monaco-button'));
-                    const sendBtn = buttons.find(b => /send/i.test(b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent || '')) || agentView.querySelector('[data-testid="send-button"]');
-                    writeDebugLog('Diagnostic: Send button found (manual)? ' + (sendBtn ? 'Yes' : 'No'));
-                    const cancelBtn = buttons.find(b => /cancel/i.test(b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent || ''));
-                    writeDebugLog('Diagnostic: Cancel button found (manual)? ' + (cancelBtn ? 'Yes' : 'No'));
-                }
+                const buttons = Array.from(agentView.querySelectorAll('button, a.monaco-button, div.monaco-button'));
+                const sendBtn = buttons.find(b => /send/i.test(b.getAttribute('title') || b.getAttribute('aria-label') || b.textContent || '')) || agentView.querySelector('[data-testid="send-button"]');
+                writeDebugLog('Diagnostic: Send button found (manual)? ' + (sendBtn ? 'Yes' : 'No'));
                 
                 const inputField = agentView.querySelector('div[contenteditable="true"][data-lexical-editor="true"], textarea[placeholder*="Ask anything" i], input[placeholder*="Ask anything" i]');
                 writeDebugLog('Diagnostic: Input field found? ' + (inputField ? 'Yes' : 'No'));
@@ -190,9 +401,9 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
             const htmlContent = formatHTML(document.documentElement.outerHTML);
             const timestamp = Date.now();
             
-            if (FileSystemAccess.fs && FileSystemAccess.path) {
-                const dumpPath = FileSystemAccess.path.join(FileSystemAccess.basePath, 'antigravity-agent-view-dump-' + timestamp + '.html');
-                FileSystemAccess.fs.writeFileSync(dumpPath, htmlContent, 'utf8');
+            if (AntigravityFS.fs && AntigravityFS.path) {
+                const dumpPath = AntigravityFS.path.join(AntigravityFS.basePath, 'antigravity-agent-view-dump-' + timestamp + '.html');
+                AntigravityFS.fs.writeFileSync(dumpPath, htmlContent, 'utf8');
                 writeDebugLog('HTML dump saved to ' + dumpPath);
             } else {
                 downloadFileBrowser('antigravity-agent-view-dump-' + timestamp + '.html', htmlContent);
@@ -313,8 +524,6 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
                 console.log('Antigravity Auto-Retry: Clicking Cancel button.');
                 writeDebugLog('Clicking Cancel button', cancelButton);
                 cancelButton.click();
-            } else {
-                writeDebugLog('Cancel button not found during recovery.');
             }
 
             // 2. Wait 3 seconds
@@ -322,11 +531,6 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
 
             // 3. Type "continue"
             const inputFound = setInputValue('div[contenteditable="true"][data-lexical-editor="true"], textarea[placeholder*="Ask anything" i], input[placeholder*="Ask anything" i]', 'continue');
-            if (inputFound) {
-                console.log('Antigravity Auto-Retry: Input "continue" set.');
-            } else {
-                writeDebugLog('Input field not found during recovery.');
-            }
 
             // 4. Wait 3 seconds
             await new Promise(r => setTimeout(r, 3000));
@@ -337,8 +541,6 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
                 console.log('Antigravity Auto-Retry: Clicking Send button.');
                 writeDebugLog('Clicking Send button', sendButton);
                 sendButton.click();
-            } else {
-                writeDebugLog('Send button not found during recovery.');
             }
 
         } catch (e) {
@@ -417,13 +619,12 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
                         hasSeenDots = true;
                     }
 
-                    // Count if we see dots, OR if we have seen dots in this streak and still see plain "Running"
                     if (hasDots || (hasSeenDots && hasPlain)) {
                         runningCounter++;
                         if (runningCounter === 1) {
                             writeDebugLog('Detected "Running" state. Starting counter.');
                         }
-                        if (runningCounter >= 3000) { // 300 seconds at 100ms interval
+                        if (runningCounter >= 3000) { // 300 seconds
                             writeDebugLog('Running counter reached 3000. Triggering recovery.');
                             executeRecoverySequence();
                         }
@@ -445,7 +646,6 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
                 notifications.forEach(el => {
                     if (el.textContent.includes(corruptionMsg) || el.textContent.includes(corruptionMsgGerman)) {
                         el.style.display = 'none';
-                        // Also try to find the parent toast container and hide it
                         const toast = el.closest('.notification-toast-container');
                         if (toast && toast.style.display !== 'none') {
                             writeDebugLog('Hiding corruption warning toast', toast);
@@ -453,6 +653,102 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
                         }
                     }
                 });
+                ` : ''}
+
+                ${includeSshAutoLogin ? `
+                // --- Part 6: Remote-SSH-Auto-Login logic ---
+                const bakedPasswords = ${JSON.stringify(sshPasswords)};
+                const sshTitleEl = Array.from(document.querySelectorAll('.quick-input-title')).find(el => {
+                    const text = el.textContent.toLowerCase();
+                    return text.includes('password:') || text.includes('passwort:');
+                });
+                
+                if (sshTitleEl) {
+                    const input = document.querySelector('.quick-input-box input[type="password"]');
+                    if (input && !clickedButtons.has(input)) {
+                        const titleText = sshTitleEl.textContent;
+                        writeDebugLog(\`SSH Prompt detected: "\${titleText}"\`);
+                        
+                        const match = titleText.match(/(?:([^@]+)@)?([^']+)'s (?:password|passwort):/i);
+                        
+                        if (match) {
+                            const sshUser = match[1] || '';
+                            const sshHost = match[2] || '';
+                            const fullHost = (sshUser ? sshUser + '@' : '') + sshHost;
+                            
+                            const b64 = bakedPasswords[fullHost] || bakedPasswords[sshHost] || bakedPasswords[sshUser];
+                            if (b64) {
+                                try {
+                                    const password = atob(b64);
+                                    writeDebugLog(\`Starting auto-login for \${sshHost}...\`);
+                                    
+                                    input.focus();
+                                    input.select();
+                                    document.execCommand('insertText', false, password);
+                                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                                    
+                                    clickedButtons.add(input);
+                                                                     // New Approach: 1s stabilization, then wait for focus
+                                    setTimeout(() => {
+                                        writeDebugLog("Stabilization finished. Starting focus-watch...");
+                                        
+                                        let submissionTriggered = false;
+                                        const checkFocusAndSubmit = () => {
+                                            if (submissionTriggered) return;
+
+                                            const windowFocused = document.hasFocus();
+                                            const inputFocused = (document.activeElement === input);
+                                            
+                                            if (windowFocused && inputFocused) {
+                                                submissionTriggered = true;
+                                                writeDebugLog("Focus detected! Waiting 100ms safety delay before submission...");
+                                                
+                                                setTimeout(() => {
+                                                    writeDebugLog("Safety delay finished. Sending Enter events...");
+                                                    const createEvent = (code) => ({ 
+                                                        key: 'Enter', code: code, keyCode: 13, which: 13, 
+                                                        bubbles: true, cancelable: true, composed: true,
+                                                        location: code === 'NumpadEnter' ? 3 : 0, view: window
+                                                    });
+                                                    
+                                                    const targets = [input, input.parentElement, input.closest('.quick-input-widget'), window];
+                                                    for (const target of targets) {
+                                                        if (!target) continue;
+                                                        target.dispatchEvent(new KeyboardEvent('keydown', createEvent('Enter')));
+                                                        target.dispatchEvent(new KeyboardEvent('keydown', createEvent('NumpadEnter')));
+                                                    }
+                                                    writeDebugLog("Enter events broadcasted.");
+                                                }, 100);
+                                            } else {
+                                                // Log every 2 seconds if still waiting
+                                                if (!window._lastSshFocusLog || Date.now() - window._lastSshFocusLog > 2000) {
+                                                    writeDebugLog("Still waiting for manual focus (Click back into Antigravity)...");
+                                                    window._lastSshFocusLog = Date.now();
+                                                }
+                                            }
+                                        };
+
+                                        // Poll every 100ms for focus
+                                        const focusPoll = setInterval(() => {
+                                            if (submissionTriggered) {
+                                                clearInterval(focusPoll);
+                                            } else {
+                                                checkFocusAndSubmit();
+                                            }
+                                        }, 100);
+
+                                        // Also listen for focus event
+                                        window.addEventListener('focus', checkFocusAndSubmit, { once: true });
+                                    }, 1000);
+
+                                } catch (e1) {
+                                    writeDebugLog(\`Error during password insertion: \${e1.message}\`);
+                                }
+                            }
+                        }
+                    }
+                }
                 ` : ''}
             } catch (e) {
                 console.error("Antigravity Auto-Retry loop error:", e);
@@ -467,7 +763,37 @@ function generateInjectionScript(choice, hideCorruption, enableDebug) {
 `;
 }
 
-async function getPatchChoice() {
+/**
+ * Detects the current state of features in the patched workbench.html.
+ */
+function detectCurrentState(workbenchPath) {
+    const state = { ssh: false, corruption: false, debug: false };
+    if (!workbenchPath || !fs.existsSync(workbenchPath)) return state;
+    
+    try {
+        const content = fs.readFileSync(workbenchPath, 'utf8');
+        const match = content.match(/PATCH_CONFIG: ({.*?}) -->/);
+        if (match) {
+            try {
+                const config = JSON.parse(match[1]);
+                state.ssh = !!config.ssh;
+                state.corruption = !!config.corruption;
+                state.debug = !!config.debug;
+                return state;
+            } catch (e) {}
+        }
+        
+        // Fallback for older patches
+        state.ssh = content.includes('Part 6: Remote-SSH-Auto-Login');
+        state.corruption = content.includes('Part 5: Hide corruption warning');
+        state.debug = content.includes('Diagnostic Key Tracker');
+    } catch (e) {}
+    return state;
+}
+
+async function getPatchChoice(workbenchPath) {
+    const currentState = detectCurrentState(workbenchPath);
+    
     const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout
@@ -484,9 +810,10 @@ async function getPatchChoice() {
     console.log('7) Only Allow');
     console.log('8) Only Run');
     console.log('9) Reset all');
+    console.log('10) Continue without patching');
 
     return new Promise((resolve) => {
-        rl.question('\nSelect an option (1-9) or press Enter for all: ', (answer) => {
+        rl.question('\nSelect an option (1-10) or press Enter for all: ', (answer) => {
             let choice = 'all';
             switch (answer) {
                 case '2': choice = 'retry_continue_allow'; break;
@@ -499,15 +826,37 @@ async function getPatchChoice() {
                 case '9':
                     rl.close();
                     return resolve({ choice: 'reset_all' });
+                case '10': choice = 'skip_patching'; break;
                 default: choice = 'all'; break;
             }
 
-            rl.question('Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: n]: ', (hideAnswer) => {
-                const hideCorruption = hideAnswer.toLowerCase().startsWith('y');
-                rl.question('Would you like to enable debug mode? Logs and HTML dumps will be saved to your Downloads folder. (y/n) [Default: n]: ', (debugAnswer) => {
-                    rl.close();
-                    const enableDebug = debugAnswer.toLowerCase().startsWith('y');
-                    resolve({ choice, hideCorruption, enableDebug });
+            const sshDefault = currentState.ssh ? 'y' : 'n';
+            rl.question(`Would you like to enable "Remote-SSH-Auto-Login"? (y/n) [Default: ${sshDefault}]: `, async (sshAnswer) => {
+                const sshAnswerLower = sshAnswer.toLowerCase().trim();
+                const enableSshAutoLogin = sshAnswerLower ? sshAnswerLower.startsWith('y') : currentState.ssh;
+                
+                let sshPasswords = {};
+                if (enableSshAutoLogin) {
+                    // Only enter the menu if the user EXPLICITLY typed 'y'
+                    // If they just pressed Enter and it was already active, just load existing
+                    if (sshAnswerLower.startsWith('y')) {
+                        sshPasswords = await promptForSshPasswords(rl);
+                    } else {
+                        sshPasswords = loadSavedPasswords();
+                    }
+                    ensureSettings();
+                }
+                
+                const corruptionDefault = currentState.corruption ? 'y' : 'n';
+                rl.question(`Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: ${corruptionDefault}]: `, (hideAnswer) => {
+                    const hideCorruption = hideAnswer ? hideAnswer.toLowerCase().startsWith('y') : currentState.corruption;
+                    
+                    const debugDefault = currentState.debug ? 'y' : 'n';
+                    rl.question(`Would you like to enable debug mode? (y/n) [Default: ${debugDefault}]: `, (debugAnswer) => {
+                        rl.close();
+                        const enableDebug = debugAnswer ? debugAnswer.toLowerCase().startsWith('y') : currentState.debug;
+                        resolve({ choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableDebug });
+                    });
                 });
             });
         });
@@ -565,14 +914,30 @@ function getWorkbenchPath() {
 async function applyPatch() {
     log('--- Antigravity Retry Patch Utility ---');
 
-    const { choice, hideCorruption, enableDebug } = await getPatchChoice();
+    const workbenchPath = getWorkbenchPath();
+    const { choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableDebug } = await getPatchChoice(workbenchPath);
     if (choice === 'reset_all') {
         log(`Selected mode: RESET ALL`);
+    } else if (choice === 'skip_patching') {
+        log(`Selected mode: SKIP PATCHING (Configuration only)`);
     } else {
-        log(`Selected mode: ${choice.toUpperCase()}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}${enableDebug ? ' + DEBUG MODE' : ''}`);
+        log(`Selected mode: ${choice.toUpperCase()}${enableSshAutoLogin ? ' + SSH AUTO-LOGIN (' + Object.keys(sshPasswords).length + ' hosts)' : ''}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}${enableDebug ? ' + DEBUG MODE' : ''}`);
     }
 
-    const workbenchPath = getWorkbenchPath();
+    if (choice === 'skip_patching') {
+        log('------------------------------------------');
+        log('Configuration session finished.');
+        if (enableSshAutoLogin) {
+            log('SSH passwords and terminal settings have been updated locally.');
+        } else {
+            log('No changes were made to local configurations.');
+        }
+        warn('NOTE: Option 10 does NOT modify your Antigravity installation.');
+        warn('To remove or change existing patches, you must use options 1-9.');
+        log('------------------------------------------');
+        return;
+    }
+
     if (!workbenchPath) {
         error('Could not find Antigravity installation path. Please ensure Antigravity is installed or check the script path definitions.');
         return;
@@ -598,7 +963,7 @@ async function applyPatch() {
             return;
         }
     } catch (e) {
-        if (!isElevated()) error('You do not have sufficient permissions. Run the script again as administrator');
+        if (!isElevated()) error('You do not have sufficient privileges. Run the script again as administrator');
         else if (e.code === 'EACCES') {
             warn('Permission denied while writing file.');
         } else {
@@ -637,7 +1002,7 @@ async function applyPatch() {
 
         log('Preparing patched content...');
         let html = cleanHtml;
-        const injectionScript = generateInjectionScript(choice, hideCorruption, enableDebug);
+        const injectionScript = generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords);
 
         // 2. Inject 'unsafe-inline' into CSP (Content Security Policy)
         html = html.replace(/(script-src\s+[^;]*)/, (match) => {
