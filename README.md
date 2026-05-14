@@ -14,11 +14,11 @@ When working with AI agents or long-running tasks in Antigravity, you might enco
   4. Waits 3 seconds.
   5. Clicks **Send**.
 - **Auto-Allow**: Automatically clicks "Allow" buttons.
-- **Auto-Run**: Automatically clicks "Run" buttons.
-- **Remove corrupt installation notification**: Removes the corrupt installation notification that appears.
+- **Remote SSH Auto-Login**: Automatically injects passwords for remote SSH connections.
+  - **AES-256 Encryption**: Your passwords are saved locally in an encrypted format, bound to your specific machine and user account.
+- **Auto-Detection & Persistence**: The patcher automatically detects your current configuration and pre-fills the menu, so you don't have to remember your previous settings.
 - **Interactive Configuration**: Choose exactly which features to enable during installation.
 - **Cross-Platform Support**: Works on Windows, Linux, and macOS.
-- **Auto-Detection**: Automatically finds the Antigravity installation path.
 - **Safety First**: 
   - Automatically creates a backup (`workbench.html.bak`) before making changes.
   - Safely modifies the Content Security Policy (CSP) to allow the injection.
@@ -65,6 +65,17 @@ The script injects a small, lightweight JavaScript snippet into the `workbench.h
 3. Checks for specific button text (case-insensitive) and uses `WeakSet` to ensure each button is clicked only once when appropriate.
 4. Tracks the duration of the "Running" state to trigger the recovery sequence if a timeout is reached.
 5. Checks for specific notification text and hides the corrupt installation notification.
+6. **Remote SSH Auto-Login**:
+   - Detects password prompts in the Quick Input widget.
+   - Extracts host information and retrieves the matching **encrypted password** from your local database.
+   - Injects the password and waits for the window to regain focus (e.g., after a CMD window has closed).
+   - Once you click back into Antigravity, it waits 100ms and sends the "Enter" command to complete the login.
+
+## Security & Privacy
+The **Remote SSH Auto-Login** feature is designed with security in mind:
+* **AES-256 Encryption**: Passwords are not stored in plain text. They are encrypted using the AES-256-CBC algorithm.
+* **Machine-Bound**: The encryption key is derived from your local system account and hostname. This means the `ssh_passwords.json` file is useless if copied to another machine or used by another user account.
+* **Local Only**: All credentials stay on your machine. Nothing is ever sent to any remote server or external service.
 
 ## Reverting Changes
 The script includes a built-in restore function. Run the script like described above and choose 9: Reset All
