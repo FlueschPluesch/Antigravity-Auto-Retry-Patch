@@ -5,8 +5,8 @@ const readline = require('readline');
 const os = require('os');
 
 /**
- * Antigravity Auto-Retry Patch Utility
- * This script injects a small JavaScript snippet into the Antigravity workbench
+ * Antigravity IDE Auto-Retry Patch Utility
+ * This script injects a small JavaScript snippet into the Antigravity IDE workbench
  * to automatically click "Retry" buttons and/or fix "Running" hangups.
  */
 
@@ -64,7 +64,14 @@ function getSshConfigEntries() {
 function ensureSettings() {
     try {
         const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
-        const settingsPath = path.join(appData, 'Antigravity', 'User', 'settings.json');
+        let settingsPath = path.join(appData, 'Antigravity IDE', 'User', 'settings.json');
+        
+        if (!fs.existsSync(settingsPath)) {
+            const legacyPath = path.join(appData, 'Antigravity', 'User', 'settings.json');
+            if (fs.existsSync(legacyPath)) {
+                settingsPath = legacyPath;
+            }
+        }
 
         if (fs.existsSync(settingsPath)) {
             let settings = {};
@@ -141,7 +148,7 @@ function decrypt(text) {
  */
 function getPasswordFilePath() {
     const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
-    const folderPath = path.join(appData, 'Antigravity-Auto-Retry-Patch');
+    const folderPath = path.join(appData, 'Antigravity-IDE-Auto-Retry-Patch');
     
     // Ensure the directory exists
     if (!fs.existsSync(folderPath)) {
@@ -157,13 +164,25 @@ function getPasswordFilePath() {
 }
 
 /**
- * Migrates the password file from the local directory to the system AppData folder if needed.
+ * Migrates the password file from legacy storage or local directory to the system AppData folder if needed.
  */
 function migratePasswords() {
     const localPath = path.join(__dirname, 'ssh_passwords.json');
     const systemPath = getPasswordFilePath();
+    const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
+    const legacySystemPath = path.join(appData, 'Antigravity-Auto-Retry-Patch', 'ssh_passwords.json');
     
-    // Only migrate if local exists and system doesn't (or they are the same which is unlikely but handled)
+    // 1. Migrate from old legacy system AppData path if it exists but the new one does not
+    if (fs.existsSync(legacySystemPath) && !fs.existsSync(systemPath)) {
+        try {
+            fs.copyFileSync(legacySystemPath, systemPath);
+            log(`Migrated passwords from legacy Antigravity patch storage to Antigravity IDE patch storage.`);
+        } catch (e) {
+            warn('Failed to migrate passwords from legacy AppData: ' + e.message);
+        }
+    }
+    
+    // 2. Migrate from local path to system path
     if (fs.existsSync(localPath) && localPath !== systemPath && !fs.existsSync(systemPath)) {
         try {
             fs.copyFileSync(localPath, systemPath);
@@ -283,11 +302,11 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
     };
 
     return `
-<!-- Antigravity Auto-Retry Patch Start -->
+<!-- Antigravity IDE Auto-Retry Patch Start -->
 <!-- PATCH_CONFIG: ${JSON.stringify(configMetadata)} -->
 <script type="text/javascript">
 (function() {
-    console.log("Antigravity Auto-Retry: Direct Injection successful.");
+    console.log("Antigravity IDE Auto-Retry: Direct Injection successful.");
     let intervalId = null;
     const clickedButtons = new WeakSet();
     ${includeContinue ? 'let runningCounter = 0;' : ''}
@@ -328,7 +347,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             }
             logMsg += '\\n';
             
-            console.log("Antigravity Patch Debug:", logMsg.trim());
+            console.log("Antigravity IDE Patch Debug:", logMsg.trim());
             if (typeof logBuffer !== 'undefined') logBuffer.push(logMsg);
 
             if (AntigravityFS.fs && AntigravityFS.path) {
@@ -352,7 +371,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch(e) {
-            console.error("Antigravity Browser Download Error:", e);
+            console.error("Antigravity IDE Browser Download Error:", e);
         }
     }
 
@@ -553,14 +572,14 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         if (isHandlingSequence) return;
         isHandlingSequence = true;
         
-        console.log('Antigravity Auto-Retry: "Running" state detected for > 30s. Executing recovery...');
+        console.log('Antigravity IDE Auto-Retry: "Running" state detected for > 30s. Executing recovery...');
         writeDebugLog('Starting recovery sequence due to "Running" hangup.');
 
         try {
             // 1. Click Cancel
             const cancelButton = findButtonByAttribute('Cancel');
             if (cancelButton) {
-                console.log('Antigravity Auto-Retry: Clicking Cancel button.');
+                console.log('Antigravity IDE Auto-Retry: Clicking Cancel button.');
                 writeDebugLog('Clicking Cancel button', cancelButton);
                 cancelButton.click();
             }
@@ -577,13 +596,13 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             // 5. Click Send
             const sendButton = findButtonByAttribute('Send') || getAgentView().querySelector('[data-testid="send-button"]');
             if (sendButton) {
-                console.log('Antigravity Auto-Retry: Clicking Send button.');
+                console.log('Antigravity IDE Auto-Retry: Clicking Send button.');
                 writeDebugLog('Clicking Send button', sendButton);
                 sendButton.click();
             }
 
         } catch (e) {
-            console.error('Antigravity Auto-Retry: Error during recovery sequence:', e);
+            console.error('Antigravity IDE Auto-Retry: Error during recovery sequence:', e);
             writeDebugLog(\`Error during recovery sequence: \${e.message}\`);
         } finally {
             writeDebugLog('Recovery sequence finished.');
@@ -611,7 +630,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                            text.includes("try again")) && !clickedButtons.has(button);
                 });
                 if (retryButton && !(retryButton.disabled)) {
-                    console.log("Antigravity Auto-Retry: Found Retry button. Clicking...");
+                    console.log("Antigravity IDE Auto-Retry: Found Retry button. Clicking...");
                     writeDebugLog('Clicking Retry button', retryButton);
                     clickedButtons.add(retryButton);
                     retryButton.click();
@@ -625,7 +644,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                     return text.includes("allow") && !clickedButtons.has(button);
                 });
                 if (allowButton && !(allowButton.disabled)) {
-                    console.log("Antigravity Auto-Retry: Found Allow button. Clicking...");
+                    console.log("Antigravity IDE Auto-Retry: Found Allow button. Clicking...");
                     writeDebugLog('Clicking Allow button', allowButton);
                     clickedButtons.add(allowButton);
                     allowButton.click();
@@ -639,7 +658,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                     return text.includes("run") && !clickedButtons.has(button);
                 });
                 if (runButton && !(runButton.disabled)) {
-                    console.log("Antigravity Auto-Retry: Found Run button. Clicking...");
+                    console.log("Antigravity IDE Auto-Retry: Found Run button. Clicking...");
                     writeDebugLog('Clicking Run button', runButton);
                     clickedButtons.add(runButton);
                     runButton.click();
@@ -679,11 +698,16 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
 
                 ${includeHideCorruption ? `
                 // --- Part 5: Hide corruption warning ---
-                const corruptionMsg = "Your Antigravity installation appears to be corrupt";
-                const corruptionMsgGerman = "Ihre Antigravity-Installation scheint beschädigt zu sein.";
                 const notifications = document.querySelectorAll('.notification-toast, .monaco-list-row, .notification-list-item');
                 notifications.forEach(el => {
-                    if (el.textContent.includes(corruptionMsg) || el.textContent.includes(corruptionMsgGerman)) {
+                    const text = el.textContent || "";
+                    const lowerText = text.toLowerCase();
+                    const isCorruptMsg = lowerText.includes("antigravity") && 
+                                        (lowerText.includes("corrupt") || 
+                                         lowerText.includes("beschädigt") || 
+                                         lowerText.includes("reinstall") || 
+                                         lowerText.includes("neu installieren"));
+                    if (isCorruptMsg) {
                         el.style.display = 'none';
                         const toast = el.closest('.notification-toast-container');
                         if (toast && toast.style.display !== 'none') {
@@ -762,7 +786,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                                             } else {
                                                 // Log every 2 seconds if still waiting
                                                 if (!window._lastSshFocusLog || Date.now() - window._lastSshFocusLog > 2000) {
-                                                    writeDebugLog("Still waiting for manual focus (Click back into Antigravity)...");
+                                                    writeDebugLog("Still waiting for manual focus (Click back into Antigravity IDE)...");
                                                     window._lastSshFocusLog = Date.now();
                                                 }
                                             }
@@ -790,7 +814,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                 }
                 ` : ''}
             } catch (e) {
-                console.error("Antigravity Auto-Retry loop error:", e);
+                console.error("Antigravity IDE Auto-Retry loop error:", e);
                 writeDebugLog(\`Auto-Retry loop error: \${e.message}\`);
             }
         }, 100);
@@ -798,7 +822,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
     startAutoRetry();
 })();
 </script>
-<!-- Antigravity Auto-Retry Patch End -->
+<!-- Antigravity IDE Auto-Retry Patch End -->
 `;
 }
 
@@ -922,23 +946,29 @@ function getWorkbenchPath() {
     let possiblePaths = [];
 
     if (process.platform === 'linux') {
+        possiblePaths.push(path.join('/usr', 'share', 'antigravity-ide', relativeWorkbenchPath));
         possiblePaths.push(path.join('/usr', 'share', 'antigravity', relativeWorkbenchPath));
+        possiblePaths.push(path.join('/opt', 'antigravity-ide', relativeWorkbenchPath));
         possiblePaths.push(path.join('/opt', 'antigravity', relativeWorkbenchPath));
     } else if (process.platform === 'win32') {
         if (process.env.LOCALAPPDATA) {
+            possiblePaths.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Antigravity IDE', relativeWorkbenchPath));
             possiblePaths.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Antigravity', relativeWorkbenchPath));
         }
         if (process.env.ProgramFiles) {
+            possiblePaths.push(path.join(process.env.ProgramFiles, 'Antigravity IDE', relativeWorkbenchPath));
             possiblePaths.push(path.join(process.env.ProgramFiles, 'Antigravity', relativeWorkbenchPath));
         }
         if (process.env['ProgramFiles(x86)']) {
+            possiblePaths.push(path.join(process.env['ProgramFiles(x86)'], 'Antigravity IDE', relativeWorkbenchPath));
             possiblePaths.push(path.join(process.env['ProgramFiles(x86)'], 'Antigravity', relativeWorkbenchPath));
         }
     } else if (process.platform === 'darwin') {
+        possiblePaths.push(path.join('/Applications', 'Antigravity IDE.app', 'Contents', 'Resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html'));
         possiblePaths.push(path.join('/Applications', 'Antigravity.app', 'Contents', 'Resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html'));
     }
 
-    log(`Searching for Antigravity installation on ${process.platform}...`);
+    log(`Searching for Antigravity IDE installation on ${process.platform}...`);
     for (const p of possiblePaths) {
         log(`Checking: ${p}`);
         if (fs.existsSync(p)) {
@@ -951,7 +981,7 @@ function getWorkbenchPath() {
 }
 
 async function applyPatch() {
-    log('--- Antigravity Retry Patch Utility ---');
+    log('--- Antigravity IDE Retry Patch Utility ---');
 
     const workbenchPath = getWorkbenchPath();
     const { choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableDebug } = await getPatchChoice(workbenchPath);
@@ -971,14 +1001,14 @@ async function applyPatch() {
         } else {
             log('No changes were made to local configurations.');
         }
-        warn('NOTE: Option 10 does NOT modify your Antigravity installation.');
+        warn('NOTE: Option 10 does NOT modify your Antigravity IDE installation.');
         warn('To remove or change existing patches, you must use options 1-9.');
         log('------------------------------------------');
         return;
     }
 
     if (!workbenchPath) {
-        error('Could not find Antigravity installation path. Please ensure Antigravity is installed or check the script path definitions.');
+        error('Could not find Antigravity IDE installation path. Please ensure Antigravity IDE is installed or check the script path definitions.');
         return;
     }
 
@@ -992,7 +1022,7 @@ async function applyPatch() {
                 fs.writeFileSync(workbenchPath, fs.readFileSync(backupPath))
                 log('------------------------------------------');
                 log('Reset successfully applied!');
-                log('Please restart Antigravity to see the changes.');
+                log('Please restart Antigravity IDE to see the changes.');
                 log('------------------------------------------');
             }
             else {
@@ -1021,7 +1051,7 @@ async function applyPatch() {
             cleanHtml = fs.readFileSync(workbenchPath, 'utf8');
 
             // Initial check to make sure we don't backup a file that's already patched
-            if (cleanHtml.includes('Antigravity Auto-Retry Patch')) {
+            if (cleanHtml.includes('Antigravity Auto-Retry Patch') || cleanHtml.includes('Antigravity IDE Auto-Retry Patch')) {
                 error('The current workbench.html already contains a patch but no .bak file exists.');
                 error('To be safe, please manually restore a clean workbench.html or create a workbench.html.bak from a clean version.');
                 return;
@@ -1124,7 +1154,7 @@ async function applyPatch() {
 
         log('------------------------------------------');
         log('Patch successfully applied!');
-        log('Please restart Antigravity to see the changes.');
+        log('Please restart Antigravity IDE to see the changes.');
         log('------------------------------------------');
 
     } catch (err) {

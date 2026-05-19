@@ -4,7 +4,7 @@
 cd "$(dirname "$0")" || exit 1
 
 echo "========================================================"
-echo "Antigravity Patch Installer (macOS)"
+echo "Antigravity IDE Patch Installer (macOS)"
 echo "========================================================"
 echo
 echo "This script will temporarily download Node.js to apply"

@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ========================================================
-echo Antigravity Patch Installer
+echo Antigravity IDE Patch Installer
 echo ========================================================
 echo.
 echo This script will temporarily download Node.js to apply

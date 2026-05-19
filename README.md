@@ -1,9 +1,9 @@
-# Antigravity Auto-Retry & Recovery Patch
+# Antigravity IDE Auto-Retry & Recovery Patch
 
 This utility provides a robust, cross-platform patch for the **Antigravity IDE** (VS Code based) that automates common UI interactions to keep your AI agents running smoothly.
 
 ## Why is this useful?
-When working with AI agents or long-running tasks in Antigravity, you might encounter transient network failures, quota limits, or "Running" hangups. This script automates the process of clicking "Retry", "Allow", and "Run" buttons, and even handles situations where the agent appears to be stuck.
+When working with AI agents or long-running tasks in Antigravity IDE, you might encounter transient network failures, quota limits, or "Running" hangups. This script automates the process of clicking "Retry", "Allow", and "Run" buttons, and even handles situations where the agent appears to be stuck.
  
 ## Features
 - **Auto-Retry**: Automatically clicks "Retry", "Try Again", or "Wiederholen" buttons.
@@ -55,7 +55,7 @@ The script will present a menu. Choose the desired combination of features:
 3) Retry + Allow
 ...and more.
 
-### Step 3: Restart Antigravity
+### Step 3: Restart Antigravity IDE
 After the script reports success, simply restart the Antigravity IDE. The selected logic will now be active in the workbench.
 
 ## How it Works
@@ -69,12 +69,12 @@ The script injects a small, lightweight JavaScript snippet into the `workbench.h
    - Detects password prompts in the Quick Input widget.
    - Extracts host information and retrieves the matching **encrypted password** from your local database.
    - Injects the password and waits for the window to regain focus (e.g., after a CMD window has closed).
-   - Once you click back into Antigravity, it waits 100ms and sends the "Enter" command to complete the login.
+   - Once you click back into Antigravity IDE, it waits 100ms and sends the "Enter" command to complete the login.
 
 ## Security & Privacy
 The **Remote SSH Auto-Login** feature is designed with security in mind:
 * **AES-256 Encryption**: Passwords are not stored in plain text. They are encrypted using the AES-256-CBC algorithm.
-* **System Storage**: Passwords are saved in your system's application data folder (e.g., `%APPDATA%\Antigravity-Auto-Retry-Patch` on Windows), keeping them separate from the project files and safe from accidental Git uploads.
+* **System Storage**: Passwords are saved in your system's application data folder (e.g., `%APPDATA%\Antigravity-IDE-Auto-Retry-Patch` on Windows), keeping them separate from the project files and safe from accidental Git uploads.
 * **Machine-Bound**: The encryption key is derived from your local system account and hostname. This means the `ssh_passwords.json` file is useless if copied to another machine or used by another user account.
 * **Local Only**: All credentials stay on your machine. Nothing is ever sent to any remote server or external service.
 
