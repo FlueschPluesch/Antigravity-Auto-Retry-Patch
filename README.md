@@ -74,7 +74,7 @@ The script injects a small, lightweight JavaScript snippet into the `workbench.h
    - Once you click back into Antigravity IDE, it waits 100ms and sends the "Enter" command to complete the login.
 
 ## Security & Privacy
-The **Remote SSH Auto-Login** feature is designed with security in mind:
+The optional **Remote SSH Auto-Login** feature is designed with security in mind:
 * **AES-256 Encryption**: Passwords are not stored in plain text. They are encrypted using the AES-256-CBC algorithm.
 * **System Storage**: Passwords are saved in your system's application data folder (e.g., `%APPDATA%\Antigravity-IDE-Auto-Retry-Patch` on Windows), keeping them separate from the project files and safe from accidental Git uploads.
 * **Machine-Bound**: The encryption key is derived from your local system account and hostname. This means the `ssh_passwords.json` file is useless if copied to another machine or used by another user account.
