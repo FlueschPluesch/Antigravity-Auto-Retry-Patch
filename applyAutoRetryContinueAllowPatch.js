@@ -291,6 +291,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
     const includeContinue = choice === 'all' || choice.includes('continue');
     const includeAllow = choice === 'all' || choice.includes('allow');
     const includeRun = choice === 'all' || choice.includes('run');
+    const includeSubmit = choice === 'all' || choice.includes('submit');
     const includeHideCorruption = hideCorruption;
     const includeSshAutoLogin = enableSshAutoLogin;
 
@@ -665,6 +666,22 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                 }
                 ` : ''}
 
+                ${includeSubmit ? `
+                // --- Part 3b: Auto Submit logic ---
+                const submitButton = buttons.find(button => {
+                    const text = (button.textContent || "").toLowerCase();
+                    return (text.includes("submit") || 
+                           text.includes("absenden") || 
+                           text.includes("übermitteln")) && !clickedButtons.has(button);
+                });
+                if (submitButton && !(submitButton.disabled)) {
+                    console.log("Antigravity IDE Auto-Retry: Found Submit button. Clicking...");
+                    writeDebugLog('Clicking Submit button', submitButton);
+                    clickedButtons.add(submitButton);
+                    submitButton.click();
+                }
+                ` : ''}
+
                 ${includeContinue ? `
                 // --- Part 4: "Running" monitoring logic (Auto Continue) ---
                 if (!isHandlingSequence) {
@@ -864,32 +881,34 @@ async function getPatchChoice(workbenchPath) {
 
     console.log('');
     console.log('\x1b[36m--- Patch Configuration ---\x1b[0m');
-    console.log('1) All (Retry + Continue + Allow + Run) \x1b[90m[Default]\x1b[0m');
-    console.log('2) Retry + Continue + Allow');
-    console.log('3) Retry + Allow');
-    console.log('4) Continue + Allow');
+    console.log('1) All (Retry + Continue + Allow + Run + Submit) \x1b[90m[Default]\x1b[0m');
+    console.log('2) Retry + Continue + Allow + Submit');
+    console.log('3) Retry + Allow + Submit');
+    console.log('4) Continue + Allow + Submit');
     console.log('5) Only Retry');
     console.log('6) Only Continue');
     console.log('7) Only Allow');
     console.log('8) Only Run');
-    console.log('9) Reset all');
-    console.log('10) Continue without patching');
+    console.log('9) Only Submit');
+    console.log('10) Reset all');
+    console.log('11) Continue without patching');
 
     return new Promise((resolve) => {
-        rl.question('\nSelect an option (1-10) or press Enter for all: ', (answer) => {
+        rl.question('\nSelect an option (1-11) or press Enter for all: ', (answer) => {
             let choice = 'all';
             switch (answer) {
-                case '2': choice = 'retry_continue_allow'; break;
-                case '3': choice = 'retry_allow'; break;
-                case '4': choice = 'continue_allow'; break;
+                case '2': choice = 'retry_continue_allow_submit'; break;
+                case '3': choice = 'retry_allow_submit'; break;
+                case '4': choice = 'continue_allow_submit'; break;
                 case '5': choice = 'retry'; break;
                 case '6': choice = 'continue'; break;
                 case '7': choice = 'allow'; break;
                 case '8': choice = 'run'; break;
-                case '9':
+                case '9': choice = 'submit'; break;
+                case '10':
                     rl.close();
                     return resolve({ choice: 'reset_all' });
-                case '10': choice = 'skip_patching'; break;
+                case '11': choice = 'skip_patching'; break;
                 default: choice = 'all'; break;
             }
 
@@ -1001,8 +1020,8 @@ async function applyPatch() {
         } else {
             log('No changes were made to local configurations.');
         }
-        warn('NOTE: Option 10 does NOT modify your Antigravity IDE installation.');
-        warn('To remove or change existing patches, you must use options 1-9.');
+        warn('NOTE: Option 11 does NOT modify your Antigravity IDE installation.');
+        warn('To remove or change existing patches, you must use options 1-10.');
         log('------------------------------------------');
         return;
     }

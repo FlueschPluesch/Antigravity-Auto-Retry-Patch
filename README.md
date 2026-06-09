@@ -3,7 +3,7 @@
 This utility provides a robust, cross-platform patch for the **Antigravity IDE** (VS Code based) that automates common UI interactions to keep your AI agents running smoothly.
 
 ## Why is this useful?
-When working with AI agents or long-running tasks in Antigravity IDE, you might encounter transient network failures, quota limits, or "Running" hangups. This script automates the process of clicking "Retry", "Allow", and "Run" buttons, and even handles situations where the agent appears to be stuck.
+When working with AI agents or long-running tasks in Antigravity IDE, you might encounter transient network failures, quota limits, or "Running" hangups. This script automates the process of clicking "Retry", "Allow", "Run", and "Submit" buttons, and even handles situations where the agent appears to be stuck.
  
 ## Features
 - **Auto-Retry**: Automatically clicks "Retry", "Try Again", or "Wiederholen" buttons.
@@ -14,6 +14,8 @@ When working with AI agents or long-running tasks in Antigravity IDE, you might 
   4. Waits 3 seconds.
   5. Clicks **Send**.
 - **Auto-Allow**: Automatically clicks "Allow" buttons.
+- **Auto-Run**: Automatically clicks "Run" buttons.
+- **Auto-Submit**: Automatically clicks "Submit", "Absenden", or "Übermitteln" buttons.
 - **Remote SSH Auto-Login**: Automatically injects passwords for remote SSH connections.
   - **AES-256 Encryption**: Your passwords are saved locally in an encrypted format, bound to your specific machine and user account.
 - **Auto-Detection & Persistence**: The patcher automatically detects your current configuration and pre-fills the menu, so you don't have to remember your previous settings.
@@ -50,9 +52,9 @@ If you already have Node.js installed globally, open your terminal in the folder
 
 ### Step 2: Configure your options
 The script will present a menu. Choose the desired combination of features:
-1) All (Retry + Continue + Allow + Run) [Default]
-2) Retry + Continue + Allow
-3) Retry + Allow
+1) All (Retry + Continue + Allow + Run + Submit) [Default]
+2) Retry + Continue + Allow + Submit
+3) Retry + Allow + Submit
 ...and more.
 
 ### Step 3: Restart Antigravity IDE
