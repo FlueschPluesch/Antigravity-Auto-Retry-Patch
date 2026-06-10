@@ -65,7 +65,7 @@ function ensureSettings() {
     try {
         const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
         let settingsPath = path.join(appData, 'Antigravity IDE', 'User', 'settings.json');
-        
+
         if (!fs.existsSync(settingsPath)) {
             const legacyPath = path.join(appData, 'Antigravity', 'User', 'settings.json');
             if (fs.existsSync(legacyPath)) {
@@ -149,7 +149,7 @@ function decrypt(text) {
 function getPasswordFilePath() {
     const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
     const folderPath = path.join(appData, 'Antigravity-IDE-Auto-Retry-Patch');
-    
+
     // Ensure the directory exists
     if (!fs.existsSync(folderPath)) {
         try {
@@ -159,7 +159,7 @@ function getPasswordFilePath() {
             return path.join(__dirname, 'ssh_passwords.json');
         }
     }
-    
+
     return path.join(folderPath, 'ssh_passwords.json');
 }
 
@@ -171,7 +171,7 @@ function migratePasswords() {
     const systemPath = getPasswordFilePath();
     const appData = process.env.APPDATA || (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support') : path.join(os.homedir(), '.config'));
     const legacySystemPath = path.join(appData, 'Antigravity-Auto-Retry-Patch', 'ssh_passwords.json');
-    
+
     // 1. Migrate from old legacy system AppData path if it exists but the new one does not
     if (fs.existsSync(legacySystemPath) && !fs.existsSync(systemPath)) {
         try {
@@ -181,7 +181,7 @@ function migratePasswords() {
             warn('Failed to migrate passwords from legacy AppData: ' + e.message);
         }
     }
-    
+
     // 2. Migrate from local path to system path
     if (fs.existsSync(localPath) && localPath !== systemPath && !fs.existsSync(systemPath)) {
         try {
@@ -287,6 +287,7 @@ async function promptForSshPasswords(rl) {
  * Generates the injection script based on the user's choice.
  */
 function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords = {}) {
+    const patchRunId = 'patch_' + Date.now();
     const includeRetry = choice === 'all' || choice.includes('retry');
     const includeContinue = choice === 'all' || choice.includes('continue');
     const includeAllow = choice === 'all' || choice.includes('allow');
@@ -308,6 +309,15 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
 <script type="text/javascript">
 (function() {
     console.log("Antigravity IDE Auto-Retry: Direct Injection successful.");
+
+    // Reset button position if patch run ID changed
+    const currentPatchId = "${patchRunId}";
+    if (localStorage.getItem('antigravity-patch-run-id') !== currentPatchId) {
+        localStorage.removeItem('antigravity-debug-btn-left');
+        localStorage.removeItem('antigravity-debug-btn-top');
+        localStorage.setItem('antigravity-patch-run-id', currentPatchId);
+    }
+
     let intervalId = null;
     const clickedButtons = new WeakSet();
     ${includeContinue ? 'let runningCounter = 0;' : ''}
@@ -425,20 +435,100 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         btn.id = 'antigravity-debug-download-btn';
         btn.textContent = '📥 Download Debug Infos';
         btn.style.position = 'fixed';
-        btn.style.bottom = '15%';
-        btn.style.right = '20px';
         btn.style.zIndex = '999999';
-        btn.style.padding = '8px 12px';
+        btn.style.webkitAppRegion = 'no-drag';
+        btn.style.padding = '3px 12px';
         btn.style.backgroundColor = '#d32f2f';
         btn.style.color = 'white';
         btn.style.border = 'none';
         btn.style.borderRadius = '4px';
-        btn.style.cursor = 'pointer';
+        btn.style.cursor = 'grab';
         btn.style.fontFamily = 'sans-serif';
         btn.style.fontSize = '12px';
         btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
         
-        btn.onclick = () => {
+        // Restore position from localStorage if exists
+        const savedLeft = localStorage.getItem('antigravity-debug-btn-left');
+        const savedTop = localStorage.getItem('antigravity-debug-btn-top');
+        if (savedLeft && savedTop) {
+            btn.style.left = savedLeft;
+            btn.style.top = savedTop;
+            btn.style.bottom = 'auto';
+            btn.style.right = 'auto';
+        } else {
+            btn.style.left = '50%';
+            btn.style.bottom = '0px';
+            btn.style.transform = 'translateX(-50%)';
+            btn.style.top = 'auto';
+            btn.style.right = 'auto';
+        }
+
+        // Drag and drop implementation using pointer events
+        let blockClick = false;
+
+        btn.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            
+            const rect = btn.getBoundingClientRect();
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+
+            let isDragging = false;
+            btn.style.cursor = 'grabbing';
+
+            const onPointerMove = (moveEvent) => {
+                const dx = moveEvent.clientX - startX;
+                const dy = moveEvent.clientY - startY;
+
+                if (!isDragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+                    isDragging = true;
+                    btn.style.transform = 'none';
+                }
+
+                if (isDragging) {
+                    let newLeft = moveEvent.clientX - offsetX;
+                    let newTop = moveEvent.clientY - offsetY;
+
+                    const maxLeft = window.innerWidth - rect.width;
+                    const maxTop = window.innerHeight - rect.height;
+
+                    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                    newTop = Math.max(0, Math.min(newTop, maxTop));
+
+                    btn.style.left = newLeft + 'px';
+                    btn.style.top = newTop + 'px';
+                    btn.style.bottom = 'auto';
+                    btn.style.right = 'auto';
+                }
+            };
+
+            const onPointerUp = (upEvent) => {
+                window.removeEventListener('pointermove', onPointerMove);
+                window.removeEventListener('pointerup', onPointerUp);
+                btn.style.cursor = 'grab';
+
+                if (isDragging) {
+                    blockClick = true;
+                    setTimeout(() => { blockClick = false; }, 100);
+                    localStorage.setItem('antigravity-debug-btn-left', btn.style.left);
+                    localStorage.setItem('antigravity-debug-btn-top', btn.style.top);
+                }
+            };
+
+            window.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+        });
+
+        // Trigger manual download only on non-dragged click
+        btn.addEventListener('click', (e) => {
+            if (blockClick) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            
             writeDebugLog('Manual log download triggered via UI button.');
             
             // --- Diagnostic Checks ---
@@ -468,9 +558,39 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                 downloadFileBrowser('antigravity-agent-view-dump-' + timestamp + '.html', htmlContent);
                 downloadFileBrowser('antigravity-patch-debug-' + timestamp + '.log', logBuffer.join(''));
             }
-        };
+        });
         
         document.body.appendChild(btn);
+
+        window.addEventListener('resize', () => {
+            const rect = btn.getBoundingClientRect();
+            if (btn.style.left.endsWith('%')) return;
+            let currentLeft = parseFloat(btn.style.left);
+            let currentTop = parseFloat(btn.style.top);
+            if (!isNaN(currentLeft) && !isNaN(currentTop)) {
+                const maxLeft = window.innerWidth - rect.width;
+                const maxTop = window.innerHeight - rect.height;
+                const newLeft = Math.max(0, Math.min(currentLeft, maxLeft));
+                const newTop = Math.max(0, Math.min(currentTop, maxTop));
+                btn.style.left = newLeft + 'px';
+                btn.style.top = newTop + 'px';
+            }
+        });
+
+        requestAnimationFrame(() => {
+            const rect = btn.getBoundingClientRect();
+            if (btn.style.left.endsWith('%')) return;
+            let currentLeft = parseFloat(btn.style.left);
+            let currentTop = parseFloat(btn.style.top);
+            if (!isNaN(currentLeft) && !isNaN(currentTop)) {
+                const maxLeft = window.innerWidth - rect.width;
+                const maxTop = window.innerHeight - rect.height;
+                const newLeft = Math.max(0, Math.min(currentLeft, maxLeft));
+                const newTop = Math.max(0, Math.min(currentTop, maxTop));
+                btn.style.left = newLeft + 'px';
+                btn.style.top = newTop + 'px';
+            }
+        });
     }
     
     createDebugButton();
