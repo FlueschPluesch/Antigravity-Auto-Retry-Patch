@@ -406,6 +406,8 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         svg.setAttribute('stroke-width', '2.5');
         svg.setAttribute('stroke-linecap', 'round');
         svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
         
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', 'm12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z');
@@ -423,6 +425,8 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         svg.setAttribute('stroke-width', '2.5');
         svg.setAttribute('stroke-linecap', 'round');
         svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
         
         const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         line1.setAttribute('x1', '18');
@@ -451,6 +455,8 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         svg.setAttribute('stroke-width', '2.5');
         svg.setAttribute('stroke-linecap', 'round');
         svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
         
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', '12');
@@ -485,6 +491,8 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         svg.setAttribute('stroke-width', '2.5');
         svg.setAttribute('stroke-linecap', 'round');
         svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
         
         const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
         polyline.setAttribute('points', '20 6 9 17 4 12');
@@ -538,6 +546,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                 toast.style.setProperty('font-family', 'system-ui, -apple-system, sans-serif', 'important');
                 toast.style.setProperty('font-size', '13px', 'important');
                 toast.style.setProperty('font-weight', '500', 'important');
+                toast.style.setProperty('line-height', '1.4', 'important');
                 toast.style.setProperty('box-shadow', '0 8px 32px rgba(0, 0, 0, 0.4)', 'important');
                 toast.style.setProperty('opacity', '0', 'important');
                 toast.style.setProperty('transform', 'translateY(-20px)', 'important');
@@ -546,10 +555,14 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                 const icon = document.createElement('div');
                 icon.style.setProperty('display', 'flex', 'important');
                 icon.style.setProperty('align-items', 'center', 'important');
+                icon.style.setProperty('justify-content', 'center', 'important');
                 icon.appendChild(createSvgIcon(iconColor));
                 toast.appendChild(icon);
 
                 const text = document.createElement('div');
+                text.style.setProperty('line-height', '1.4', 'important');
+                text.style.setProperty('margin', '0', 'important');
+                text.style.setProperty('padding', '0', 'important');
                 let plainLogMessage = '';
                 if (isModelRestore) {
                     text.appendChild(document.createTextNode('Antigravity IDE: Model restored to '));
@@ -635,6 +648,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
     }
 
     function showErrorToast(err) {
+        if (!${enableDebug}) return;
         try {
             let message = '';
             let stack = '';
@@ -645,6 +659,10 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             } else {
                 message = String(err);
                 stack = message;
+            }
+
+            if (message && message.includes('ResizeObserver')) {
+                return;
             }
             
             const shortMessage = message.length > 120 ? message.substring(0, 117) + '...' : message;
@@ -663,6 +681,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             toast.style.setProperty('font-family', 'system-ui, -apple-system, sans-serif', 'important');
             toast.style.setProperty('font-size', '13px', 'important');
             toast.style.setProperty('font-weight', '500', 'important');
+            toast.style.setProperty('line-height', '1.4', 'important');
             toast.style.setProperty('box-shadow', '0 8px 32px rgba(0, 0, 0, 0.4)', 'important');
             toast.style.setProperty('opacity', '0', 'important');
             toast.style.setProperty('transform', 'translateY(-20px)', 'important');
@@ -672,10 +691,14 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             const icon = document.createElement('div');
             icon.style.setProperty('display', 'flex', 'important');
             icon.style.setProperty('align-items', 'center', 'important');
+            icon.style.setProperty('justify-content', 'center', 'important');
             icon.appendChild(createErrorIcon());
             toast.appendChild(icon);
 
             const text = document.createElement('div');
+            text.style.setProperty('line-height', '1.4', 'important');
+            text.style.setProperty('margin', '0', 'important');
+            text.style.setProperty('padding', '0', 'important');
             const strong = document.createElement('strong');
             strong.textContent = 'Antigravity Patch Error: ';
             text.appendChild(strong);
@@ -736,7 +759,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                 if (copied) return;
                 copied = true;
                 
-                const copyText = `Antigravity IDE Patch Error: \nMessage: ${ message } \nStack trace: \n${ stack } `;
+                const copyText = \`Antigravity IDE Patch Error:\\nMessage: \${message}\\nStack trace:\\n\${stack}\`;
                 const tryFallbackCopy = () => {
                     const textarea = document.createElement('textarea');
                     textarea.value = copyText;
@@ -773,7 +796,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                     navigator.clipboard.writeText(copyText)
                         .then(() => finishCopy(true))
                         .catch((err) => {
-                            writeDebugLog(`navigator.clipboard.writeText failed: ${ err.message }. Trying fallback...`);
+                            writeDebugLog(\`navigator.clipboard.writeText failed: \${err.message}. Trying fallback...\`);
                             const fallbackSuccess = tryFallbackCopy();
                             finishCopy(fallbackSuccess);
                         });
@@ -785,7 +808,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
 
             container.appendChild(toast);
 
-            writeDebugLog(`Displaying error toast: "${message}"`);
+            writeDebugLog(\`Displaying error toast: "\${message}"\`);
 
             requestAnimationFrame(() => {
                 toast.style.setProperty('opacity', '1', 'important');
@@ -1136,14 +1159,9 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             }
 
         } catch (e) {
-            const isCancelError = e && (e.message === 'Canceled' || e.message === 'canceled' || String(e).includes('Canceled'));
-            if (!isCancelError) {
-                console.error('Antigravity IDE Auto-Retry: Error during recovery sequence:', e);
-                writeDebugLog(\`Error during recovery sequence: \${e.message}\`);
-                showErrorToast(e);
-            } else {
-                writeDebugLog('Recovery sequence cancellation handled gracefully (Canceled error ignored).');
-            }
+            console.error('Antigravity IDE Auto-Retry: Error during recovery sequence:', e);
+            writeDebugLog(\`Error during recovery sequence: \${e.message}\`);
+            showErrorToast(e);
         } finally {
             writeDebugLog('Recovery sequence finished.');
             runningCounter = 0;
@@ -1452,7 +1470,57 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
                                 writeDebugLog("No saved model. Initialized with current: " + currentModel);
                             }
                         }
-icon        }
+                    }
+                }
+            } catch (e) {
+                console.error("Antigravity IDE Auto-Retry loop error:", e);
+                writeDebugLog(\`Auto-Retry loop error: \${e.message}\`);
+                showErrorToast(e);
+            }
+        }, 100);
+    }
+    startAutoRetry();
+    showToast('Antigravity IDE: Auto-Retry Patch <strong style="color: #a6e3a1">active</strong>', false, '#a6e3a1', 8000);
+
+    window.addEventListener('error', (event) => {
+        try {
+            const err = event.error || { message: event.message, stack: (event.filename || 'unknown') + ':' + (event.lineno || 0) + ':' + (event.colno || 0) };
+            showErrorToast(err);
+        } catch (e) {}
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        try {
+            const err = event.reason || { message: 'Unhandled Promise Rejection' };
+            showErrorToast(err);
+        } catch (e) {}
+    });
+})();
+</script>
+<!-- Antigravity IDE Auto-Retry Patch End -->
+`;
+}
+
+/**
+ * Detects the current state of features in the patched workbench.html.
+ */
+function detectCurrentState(workbenchPath) {
+    const state = { ssh: false, corruption: false, debug: false, restoreModel: false };
+    if (!workbenchPath || !fs.existsSync(workbenchPath)) return state;
+
+    try {
+        const content = fs.readFileSync(workbenchPath, 'utf8');
+        const match = content.match(/PATCH_CONFIG: ({.*?}) -->/);
+        if (match) {
+            try {
+                const config = JSON.parse(match[1]);
+                state.ssh = !!config.ssh;
+                state.corruption = !!config.corruption;
+                state.debug = !!config.debug;
+                state.restoreModel = !!config.restoreModel;
+                return state;
+            } catch (e) { }
+        }
 
         // Fallback for older patches
         state.ssh = content.includes('Part 6: Remote-SSH-Auto-Login');
@@ -1461,7 +1529,7 @@ icon        }
         state.restoreModel = content.includes('Part 7: Auto-Restore Last Selected AI Model');
     } catch (e) { }
     return state;
-}   
+}
 
 async function getPatchChoice(workbenchPath) {
     const currentState = detectCurrentState(workbenchPath);
@@ -1505,7 +1573,7 @@ async function getPatchChoice(workbenchPath) {
             }
 
             const sshDefault = currentState.ssh ? 'y' : 'n';
-            rl.question(`Would you like to enable "Remote-SSH-Auto-Login" ? (y / n)[Default: ${ sshDefault }]: `, async (sshAnswer) => {
+            rl.question(`Would you like to enable "Remote-SSH-Auto-Login"? (y/n) [Default: ${sshDefault}]: `, async (sshAnswer) => {
                 const sshAnswerLower = sshAnswer.toLowerCase().trim();
                 const enableSshAutoLogin = sshAnswerLower ? sshAnswerLower.startsWith('y') : currentState.ssh;
 
@@ -1522,15 +1590,15 @@ async function getPatchChoice(workbenchPath) {
                 }
 
                 const corruptionDefault = currentState.corruption ? 'y' : 'n';
-                rl.question(`Would you also like to hide the "corrupt installation" warning message ? (y / n)[Default: ${ corruptionDefault }]: `, (hideAnswer) => {
+                rl.question(`Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: ${corruptionDefault}]: `, (hideAnswer) => {
                     const hideCorruption = hideAnswer ? hideAnswer.toLowerCase().startsWith('y') : currentState.corruption;
 
                     const restoreModelDefault = currentState.restoreModel ? 'y' : 'n';
-                    rl.question(`Would you like to enable "Auto-Restore-Last-AI-Model" ? (y / n)[Default: ${ restoreModelDefault }]: `, (restoreAnswer) => {
+                    rl.question(`Would you like to enable "Auto-Restore-Last-AI-Model"? (y/n) [Default: ${restoreModelDefault}]: `, (restoreAnswer) => {
                         const enableRestoreModel = restoreAnswer ? restoreAnswer.toLowerCase().startsWith('y') : currentState.restoreModel;
 
                         const debugDefault = currentState.debug ? 'y' : 'n';
-                        rl.question(`Would you like to enable debug mode ? (y / n)[Default: ${ debugDefault }]: `, (debugAnswer) => {
+                        rl.question(`Would you like to enable debug mode? (y/n) [Default: ${debugDefault}]: `, (debugAnswer) => {
                             rl.close();
                             const enableDebug = debugAnswer ? debugAnswer.toLowerCase().startsWith('y') : currentState.debug;
                             resolve({ choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableRestoreModel, enableDebug });
@@ -1584,11 +1652,11 @@ function getWorkbenchPath() {
         possiblePaths.push(path.join('/Applications', 'Antigravity.app', 'Contents', 'Resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html'));
     }
 
-    log(`Searching for Antigravity IDE installation on ${ process.platform }...`);
+    log(`Searching for Antigravity IDE installation on ${process.platform}...`);
     for (const p of possiblePaths) {
-        log(`Checking: ${ p } `);
+        log(`Checking: ${p}`);
         if (fs.existsSync(p)) {
-            log(`Found workbench.html at: ${ p } `);
+            log(`Found workbench.html at: ${p}`);
             return p;
         }
     }
@@ -1604,9 +1672,9 @@ async function applyPatch() {
     if (choice === 'reset_all') {
         log(`Selected mode: RESET ALL`);
     } else if (choice === 'skip_patching') {
-        log(`Selected mode: SKIP PATCHING(Configuration only)`);
+        log(`Selected mode: SKIP PATCHING (Configuration only)`);
     } else {
-        log(`Selected mode: ${ choice.toUpperCase() }${ enableSshAutoLogin ? ' + SSH AUTO-LOGIN (' + Object.keys(sshPasswords).length + ' hosts)' : '' }${ hideCorruption ? ' + HIDE CORRUPTION WARNING' : '' }${ enableRestoreModel ? ' + AUTO-RESTORE LAST MODEL' : '' }${ enableDebug ? ' + DEBUG MODE' : '' } `);
+        log(`Selected mode: ${choice.toUpperCase()}${enableSshAutoLogin ? ' + SSH AUTO-LOGIN (' + Object.keys(sshPasswords).length + ' hosts)' : ''}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}${enableRestoreModel ? ' + AUTO-RESTORE LAST MODEL' : ''}${enableDebug ? ' + DEBUG MODE' : ''}`);
     }
 
     if (choice === 'skip_patching') {
@@ -1634,7 +1702,7 @@ async function applyPatch() {
     try {
         if (choice === 'reset_all') {
             if (fs.existsSync(backupPath)) {
-                log(`Found backup at ${ backupPath }. Using it as clean base`);
+                log(`Found backup at ${backupPath}. Using it as clean base`);
                 fs.writeFileSync(workbenchPath, fs.readFileSync(backupPath))
                 log('------------------------------------------');
                 log('Reset successfully applied!');
@@ -1660,10 +1728,10 @@ async function applyPatch() {
     try {
         // 1. Determine clean base content
         if (fs.existsSync(backupPath)) {
-            log(`Found backup at ${ backupPath }. Using it as clean base to prevent double patching.`);
+            log(`Found backup at ${backupPath}. Using it as clean base to prevent double patching.`);
             cleanHtml = fs.readFileSync(backupPath, 'utf8');
         } else {
-            log(`No backup found.Reading current file and creating backup at ${ backupPath }...`);
+            log(`No backup found. Reading current file and creating backup at ${backupPath}...`);
             cleanHtml = fs.readFileSync(workbenchPath, 'utf8');
 
             // Initial check to make sure we don't backup a file that's already patched
@@ -1774,7 +1842,7 @@ async function applyPatch() {
         log('------------------------------------------');
 
     } catch (err) {
-        error(`An error occurred during the patching process: ${ err.message } `);
+        error(`An error occurred during the patching process: ${err.message}`);
     }
 }
 
