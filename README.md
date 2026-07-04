@@ -16,6 +16,7 @@ When working with AI agents or long-running tasks in Antigravity IDE, you might 
 - **Auto-Allow**: Automatically clicks "Allow" buttons.
 - **Auto-Run**: Automatically clicks "Run" buttons.
 - **Auto-Submit**: Automatically clicks "Submit", "Absenden", or "Übermitteln" buttons.
+- **Auto-Restore-Last-AI-Model**: Automatically remembers the last selected AI model (e.g., `Gemini 3.5 Flash (High)`) and restores/selects it when the Antigravity IDE starts up as soon as it becomes available.
 - **Remote SSH Auto-Login**: Automatically injects passwords for remote SSH connections.
   - **AES-256 Encryption**: Your passwords are saved locally in an encrypted format, bound to your specific machine and user account.
 - **Auto-Detection & Persistence**: The patcher automatically detects your current configuration and pre-fills the menu, so you don't have to remember your previous settings.
@@ -57,6 +58,13 @@ The script will present a menu. Choose the desired combination of features:
 3) Retry + Allow + Submit
 ...and more.
 
+After selecting the main mode, you will be prompted with interactive questions to:
+- Enable **Remote SSH Auto-Login** (and input your passwords).
+- Hide the **"corrupt installation"** warning message.
+- Enable **"Auto-Restore-Last-AI-Model"** to automatically select your last used model.
+- Enable **Debug Mode** for detailed log messages.
+
+
 ### Step 3: Restart Antigravity IDE
 After the script reports success, simply restart the Antigravity IDE. The selected logic will now be active in the workbench.
 
@@ -72,6 +80,11 @@ The script injects a small, lightweight JavaScript snippet into the `workbench.h
    - Extracts host information and retrieves the matching **encrypted password** from your local database.
    - Injects the password and waits for the window to regain focus (e.g., after a CMD window has closed).
    - Once you click back into Antigravity IDE, it waits 100ms and sends the "Enter" command to complete the login.
+7. **Auto-Restore-Last-AI-Model**:
+   - Detects the active AI model dropdown/button in the chat view.
+   - Saves any user-selected model changes to the browser's `localStorage` (as `antigravity-patched-last-model`).
+   - On IDE startup, if a saved model is found, it automatically clicks the model selector to open the dropdown and selects the saved model.
+   - If the target model option is temporarily unavailable (e.g., while loading), it closes the dropdown and retries (up to 3 times) before giving up.
 
 ## Security & Privacy
 The optional **Remote SSH Auto-Login** feature is designed with security in mind:

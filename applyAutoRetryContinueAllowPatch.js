@@ -286,7 +286,7 @@ async function promptForSshPasswords(rl) {
 /**
  * Generates the injection script based on the user's choice.
  */
-function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords = {}) {
+function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords = {}, enableRestoreModel = false) {
     const patchRunId = 'patch_' + Date.now();
     const includeRetry = choice === 'all' || choice.includes('retry');
     const includeContinue = choice === 'all' || choice.includes('continue');
@@ -300,7 +300,8 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         choice,
         ssh: enableSshAutoLogin,
         corruption: hideCorruption,
-        debug: enableDebug
+        debug: enableDebug,
+        restoreModel: enableRestoreModel
     };
 
     return `
@@ -323,6 +324,14 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
     ${includeContinue ? 'let runningCounter = 0;' : ''}
     ${includeContinue ? 'let hasSeenDots = false;' : ''}
     ${includeContinue ? 'let isHandlingSequence = false;' : ''}
+
+    // AI Model Auto-Restore state
+    const enableRestoreModel = ${enableRestoreModel};
+    const savedModel = localStorage.getItem('antigravity-patched-last-model');
+    let modelRestored = false;
+    let openAttempts = 0;
+    let lastActionTime = 0;
+    let lastModelValue = '';
 
     const AntigravityFS = (function() {
         let fs = null, path = null, basePath = '';
@@ -349,21 +358,22 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
     })();
 
     function writeDebugLog(msg, element = null) {
-        if (!${enableDebug}) return;
         try {
             const timestamp = new Date().toISOString();
             let logMsg = \`[\${timestamp}] \${msg}\`;
-            if (element) {
+            if (element && typeof getElementPath !== 'undefined') {
                 logMsg += \` | Element path: \${getElementPath(element)}\`;
             }
             logMsg += '\\n';
             
-            console.log("Antigravity IDE Patch Debug:", logMsg.trim());
-            if (typeof logBuffer !== 'undefined') logBuffer.push(logMsg);
-
-            if (AntigravityFS.fs && AntigravityFS.path) {
-                const logPath = AntigravityFS.path.join(AntigravityFS.basePath, 'antigravity-patch-debug.log');
-                AntigravityFS.fs.appendFileSync(logPath, logMsg);
+            console.log("Antigravity IDE Patch:", logMsg.trim());
+            
+            if (${enableDebug}) {
+                if (typeof logBuffer !== 'undefined') logBuffer.push(logMsg);
+                if (AntigravityFS.fs && AntigravityFS.path) {
+                    const logPath = AntigravityFS.path.join(AntigravityFS.basePath, 'antigravity-patch-debug.log');
+                    AntigravityFS.fs.appendFileSync(logPath, logMsg);
+                }
             }
         } catch (e) {
             console.error("Antigravity Patch Debug error:", e);
@@ -383,6 +393,435 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             URL.revokeObjectURL(url);
         } catch(e) {
             console.error("Antigravity IDE Browser Download Error:", e);
+        }
+    }
+
+    function createSvgIcon(color) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', color);
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'm12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z');
+        svg.appendChild(path);
+        return svg;
+    }
+
+    function createCloseIcon() {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '12');
+        svg.setAttribute('height', '12');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
+        
+        const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line1.setAttribute('x1', '18');
+        line1.setAttribute('y1', '6');
+        line1.setAttribute('x2', '6');
+        line1.setAttribute('y2', '18');
+        svg.appendChild(line1);
+        
+        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line2.setAttribute('x1', '6');
+        line2.setAttribute('y1', '6');
+        line2.setAttribute('x2', '18');
+        line2.setAttribute('y2', '18');
+        svg.appendChild(line2);
+        
+        return svg;
+    }
+
+    function createErrorIcon() {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', '#f38ba8');
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', '12');
+        circle.setAttribute('cy', '12');
+        circle.setAttribute('r', '10');
+        svg.appendChild(circle);
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', '12');
+        line.setAttribute('y1', '8');
+        line.setAttribute('x2', '12');
+        line.setAttribute('y2', '12');
+        svg.appendChild(line);
+        
+        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line2.setAttribute('x1', '12');
+        line2.setAttribute('y1', '16');
+        line2.setAttribute('x2', '12.01');
+        line2.setAttribute('y2', '16');
+        svg.appendChild(line2);
+        
+        return svg;
+    }
+
+    function createSuccessIcon() {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', '16');
+        svg.setAttribute('height', '16');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', '#a6e3a1');
+        svg.setAttribute('stroke-width', '2.5');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.style.setProperty('display', 'block', 'important');
+        svg.style.setProperty('flex-shrink', '0', 'important');
+        
+        const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline.setAttribute('points', '20 6 9 17 4 12');
+        svg.appendChild(polyline);
+        
+        return svg;
+    }
+
+    function getOrCreateToastContainer() {
+        let container = document.getElementById('antigravity-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'antigravity-toast-container';
+            container.style.setProperty('position', 'fixed', 'important');
+            container.style.setProperty('top', '30px', 'important');
+            container.style.setProperty('left', '50%', 'important');
+            container.style.setProperty('transform', 'translateX(-50%)', 'important');
+            container.style.setProperty('z-index', '1000000', 'important');
+            container.style.setProperty('display', 'flex', 'important');
+            container.style.setProperty('flex-direction', 'column', 'important');
+            container.style.setProperty('align-items', 'center', 'important');
+            container.style.setProperty('gap', '10px', 'important');
+            container.style.setProperty('pointer-events', 'none', 'important');
+            if (document.body) {
+                document.body.appendChild(container);
+            } else {
+                document.addEventListener('DOMContentLoaded', () => {
+                    if (!document.getElementById('antigravity-toast-container')) {
+                        document.body.appendChild(container);
+                    }
+                });
+            }
+        }
+        return container;
+    }
+
+    function showToast(messageOrModel, isModelRestore = true, iconColor = '#89b4fa', duration = 8000) {
+        const createAndShow = () => {
+            try {
+                const container = getOrCreateToastContainer();
+                const toast = document.createElement('div');
+                toast.style.setProperty('pointer-events', 'auto', 'important');
+                toast.style.setProperty('display', 'flex', 'important');
+                toast.style.setProperty('align-items', 'center', 'important');
+                toast.style.setProperty('gap', '12px', 'important');
+                toast.style.setProperty('padding', '12px 18px', 'important');
+                toast.style.setProperty('background', 'linear-gradient(135deg, #1e1e2e 0%, #11111b 100%)', 'important');
+                toast.style.setProperty('border', '1px solid rgba(137, 180, 250, 0.2)', 'important');
+                toast.style.setProperty('border-radius', '10px', 'important');
+                toast.style.setProperty('color', '#cdd6f4', 'important');
+                toast.style.setProperty('font-family', 'system-ui, -apple-system, sans-serif', 'important');
+                toast.style.setProperty('font-size', '13px', 'important');
+                toast.style.setProperty('font-weight', '500', 'important');
+                toast.style.setProperty('line-height', '1.4', 'important');
+                toast.style.setProperty('box-shadow', '0 8px 32px rgba(0, 0, 0, 0.4)', 'important');
+                toast.style.setProperty('opacity', '0', 'important');
+                toast.style.setProperty('transform', 'translateY(-20px)', 'important');
+                toast.style.setProperty('transition', 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)', 'important');
+                
+                const icon = document.createElement('div');
+                icon.style.setProperty('display', 'flex', 'important');
+                icon.style.setProperty('align-items', 'center', 'important');
+                icon.style.setProperty('justify-content', 'center', 'important');
+                icon.appendChild(createSvgIcon(iconColor));
+                toast.appendChild(icon);
+
+                const text = document.createElement('div');
+                text.style.setProperty('line-height', '1.4', 'important');
+                text.style.setProperty('margin', '0', 'important');
+                text.style.setProperty('padding', '0', 'important');
+                let plainLogMessage = '';
+                if (isModelRestore) {
+                    text.appendChild(document.createTextNode('Antigravity IDE: Model restored to '));
+                    const strong = document.createElement('strong');
+                    strong.style.setProperty('color', '#89b4fa', 'important');
+                    strong.textContent = messageOrModel;
+                    text.appendChild(strong);
+                    plainLogMessage = \`Antigravity IDE: Model restored to \${messageOrModel}\`;
+                } else {
+                    if (messageOrModel.includes('active')) {
+                        text.appendChild(document.createTextNode('Antigravity IDE: Auto-Retry Patch '));
+                        const strong = document.createElement('strong');
+                        strong.style.setProperty('color', '#a6e3a1', 'important');
+                        strong.textContent = 'active';
+                        text.appendChild(strong);
+                        plainLogMessage = 'Antigravity IDE: Auto-Retry Patch active';
+                    } else {
+                        text.textContent = messageOrModel;
+                        plainLogMessage = messageOrModel;
+                    }
+                }
+                toast.appendChild(text);
+
+                const closeBtn = document.createElement('div');
+                closeBtn.style.setProperty('display', 'flex', 'important');
+                closeBtn.style.setProperty('align-items', 'center', 'important');
+                closeBtn.style.setProperty('justify-content', 'center', 'important');
+                closeBtn.style.setProperty('padding', '4px', 'important');
+                closeBtn.style.setProperty('margin-left', '8px', 'important');
+                closeBtn.style.setProperty('cursor', 'pointer', 'important');
+                closeBtn.style.setProperty('border-radius', '50%', 'important');
+                closeBtn.style.setProperty('color', '#a6adc8', 'important');
+                closeBtn.style.setProperty('transition', 'background 0.2s, color 0.2s', 'important');
+                
+                closeBtn.addEventListener('mouseenter', () => {
+                    closeBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.1)', 'important');
+                    closeBtn.style.setProperty('color', '#cdd6f4', 'important');
+                });
+                closeBtn.addEventListener('mouseleave', () => {
+                    closeBtn.style.setProperty('background', 'transparent', 'important');
+                    closeBtn.style.setProperty('color', '#a6adc8', 'important');
+                });
+
+                closeBtn.appendChild(createCloseIcon());
+
+                const dismissToast = () => {
+                    toast.style.setProperty('opacity', '0', 'important');
+                    toast.style.setProperty('transform', 'translateY(-20px)', 'important');
+                    writeDebugLog(\`Dismissed toast: "\${plainLogMessage}"\`);
+                    setTimeout(() => { toast.remove(); }, 400);
+                };
+
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dismissToast();
+                });
+                toast.appendChild(closeBtn);
+
+                container.appendChild(toast);
+
+                writeDebugLog(\`Displaying toast: "\${plainLogMessage}" (Duration: \${duration}ms)\`);
+
+                requestAnimationFrame(() => {
+                    toast.style.setProperty('opacity', '1', 'important');
+                    toast.style.setProperty('transform', 'translateY(0)', 'important');
+                });
+
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        dismissToast();
+                    }
+                }, duration);
+            } catch (err) {
+                console.error("Toast notification error:", err);
+            }
+        };
+
+        if (document.body) {
+            createAndShow();
+        } else {
+            document.addEventListener('DOMContentLoaded', createAndShow);
+        }
+    }
+
+    function showErrorToast(err) {
+        if (!${enableDebug}) return;
+        try {
+            let message = '';
+            let stack = '';
+            
+            if (err && typeof err === 'object') {
+                message = err.message || String(err);
+                stack = err.stack || message;
+            } else {
+                message = String(err);
+                stack = message;
+            }
+
+            if (message && message.includes('ResizeObserver')) {
+                return;
+            }
+            
+            const shortMessage = message.length > 120 ? message.substring(0, 117) + '...' : message;
+            
+            const container = getOrCreateToastContainer();
+            const toast = document.createElement('div');
+            toast.style.setProperty('pointer-events', 'auto', 'important');
+            toast.style.setProperty('display', 'flex', 'important');
+            toast.style.setProperty('align-items', 'center', 'important');
+            toast.style.setProperty('gap', '12px', 'important');
+            toast.style.setProperty('padding', '12px 18px', 'important');
+            toast.style.setProperty('background', 'linear-gradient(135deg, #1e1e2e 0%, #11111b 100%)', 'important');
+            toast.style.setProperty('border', '1px solid rgba(243, 139, 168, 0.3)', 'important');
+            toast.style.setProperty('border-radius', '10px', 'important');
+            toast.style.setProperty('color', '#cdd6f4', 'important');
+            toast.style.setProperty('font-family', 'system-ui, -apple-system, sans-serif', 'important');
+            toast.style.setProperty('font-size', '13px', 'important');
+            toast.style.setProperty('font-weight', '500', 'important');
+            toast.style.setProperty('line-height', '1.4', 'important');
+            toast.style.setProperty('box-shadow', '0 8px 32px rgba(0, 0, 0, 0.4)', 'important');
+            toast.style.setProperty('opacity', '0', 'important');
+            toast.style.setProperty('transform', 'translateY(-20px)', 'important');
+            toast.style.setProperty('transition', 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)', 'important');
+            toast.style.setProperty('cursor', 'pointer', 'important');
+
+            const icon = document.createElement('div');
+            icon.style.setProperty('display', 'flex', 'important');
+            icon.style.setProperty('align-items', 'center', 'important');
+            icon.style.setProperty('justify-content', 'center', 'important');
+            icon.appendChild(createErrorIcon());
+            toast.appendChild(icon);
+
+            const text = document.createElement('div');
+            text.style.setProperty('line-height', '1.4', 'important');
+            text.style.setProperty('margin', '0', 'important');
+            text.style.setProperty('padding', '0', 'important');
+            const strong = document.createElement('strong');
+            strong.textContent = 'Antigravity Patch Error: ';
+            text.appendChild(strong);
+            
+            const span1 = document.createElement('span');
+            span1.style.color = '#f38ba8';
+            span1.textContent = shortMessage;
+            text.appendChild(span1);
+            
+            text.appendChild(document.createElement('br'));
+            
+            const span2 = document.createElement('span');
+            span2.style.fontSize = '11px';
+            span2.style.color = '#a6adc8';
+            span2.textContent = 'Click to copy stack trace';
+            text.appendChild(span2);
+
+            toast.appendChild(text);
+
+            const closeBtn = document.createElement('div');
+            closeBtn.style.setProperty('display', 'flex', 'important');
+            closeBtn.style.setProperty('align-items', 'center', 'important');
+            closeBtn.style.setProperty('justify-content', 'center', 'important');
+            closeBtn.style.setProperty('padding', '4px', 'important');
+            closeBtn.style.setProperty('margin-left', '8px', 'important');
+            closeBtn.style.setProperty('cursor', 'pointer', 'important');
+            closeBtn.style.setProperty('border-radius', '50%', 'important');
+            closeBtn.style.setProperty('color', '#a6adc8', 'important');
+            closeBtn.style.setProperty('transition', 'background 0.2s, color 0.2s', 'important');
+            
+            closeBtn.addEventListener('mouseenter', () => {
+                closeBtn.style.setProperty('background', 'rgba(255, 255, 255, 0.1)', 'important');
+                closeBtn.style.setProperty('color', '#cdd6f4', 'important');
+            });
+            closeBtn.addEventListener('mouseleave', () => {
+                closeBtn.style.setProperty('background', 'transparent', 'important');
+                closeBtn.style.setProperty('color', '#a6adc8', 'important');
+            });
+
+            closeBtn.appendChild(createCloseIcon());
+
+            const dismissToast = () => {
+                toast.style.setProperty('opacity', '0', 'important');
+                toast.style.setProperty('transform', 'translateY(-20px)', 'important');
+                writeDebugLog(\`Dismissed error toast: "\${shortMessage}"\`);
+                setTimeout(() => { toast.remove(); }, 400);
+            };
+
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                dismissToast();
+            });
+            toast.appendChild(closeBtn);
+
+            let copied = false;
+            toast.addEventListener('click', () => {
+                if (copied) return;
+                copied = true;
+                
+                const copyText = \`Antigravity IDE Patch Error:\\nMessage: \${message}\\nStack trace:\\n\${stack}\`;
+                const tryFallbackCopy = () => {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = copyText;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    let success = false;
+                    try { 
+                        success = document.execCommand('copy'); 
+                    } catch (e) {}
+                    document.body.removeChild(textarea);
+                    return success;
+                };
+
+                const finishCopy = (success = true) => {
+                    text.textContent = '';
+                    const strongCopied = document.createElement('strong');
+                    strongCopied.textContent = success ? 'Copied to clipboard!' : 'Failed to copy!';
+                    text.appendChild(strongCopied);
+
+                    icon.textContent = '';
+                    icon.appendChild(createSuccessIcon());
+                    toast.style.border = '1px solid rgba(166, 227, 161, 0.4)';
+
+                    writeDebugLog(success ? 'Error stack trace copied to clipboard.' : 'Failed to copy stack trace to clipboard.');
+
+                    setTimeout(() => {
+                        dismissToast();
+                    }, 1000);
+                };
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(copyText)
+                        .then(() => finishCopy(true))
+                        .catch((err) => {
+                            writeDebugLog(\`navigator.clipboard.writeText failed: \${err.message}. Trying fallback...\`);
+                            const fallbackSuccess = tryFallbackCopy();
+                            finishCopy(fallbackSuccess);
+                        });
+                } else {
+                    const fallbackSuccess = tryFallbackCopy();
+                    finishCopy(fallbackSuccess);
+                }
+            });
+
+            container.appendChild(toast);
+
+            writeDebugLog(\`Displaying error toast: "\${message}"\`);
+
+            requestAnimationFrame(() => {
+                toast.style.setProperty('opacity', '1', 'important');
+                toast.style.setProperty('transform', 'translateY(0)', 'important');
+            });
+
+            setTimeout(() => {
+                if (!copied && toast.parentNode) {
+                    dismissToast();
+                }
+            }, 10000);
+        } catch (e) {
+            console.error("Error showing error toast:", e);
         }
     }
 
@@ -615,9 +1054,6 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         return result.trim();
     }
     ` : `
-    function writeDebugLog(msg, element = null) {
-        // Debug mode disabled
-    }
     function dumpHtml() {}
     `}
 
@@ -725,6 +1161,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
         } catch (e) {
             console.error('Antigravity IDE Auto-Retry: Error during recovery sequence:', e);
             writeDebugLog(\`Error during recovery sequence: \${e.message}\`);
+            showErrorToast(e);
         } finally {
             writeDebugLog('Recovery sequence finished.');
             runningCounter = 0;
@@ -944,19 +1381,120 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
 
                                 } catch (e1) {
                                     writeDebugLog(\`Error during password insertion: \${e1.message}\`);
+                                    showErrorToast(e1);
                                 }
                             }
                         }
                     }
                 }
                 ` : ''}
+
+                // --- Part 7: Auto-Restore Last Selected AI Model ---
+                if (enableRestoreModel) {
+                    const modelBtn = getAgentView().querySelector('button[aria-label*="Select model" i]');
+                    if (modelBtn) {
+                        let currentModel = '';
+                        const ariaLabel = modelBtn.getAttribute('aria-label') || '';
+                        const match = ariaLabel.match(/current:\s*(.+)$/i);
+                        if (match) {
+                            currentModel = match[1].trim();
+                        } else {
+                            currentModel = modelBtn.textContent.trim();
+                        }
+
+                        if (currentModel) {
+                            // 1. Detect manual changes
+                            if (modelRestored && currentModel !== lastModelValue) {
+                                console.log("Antigravity IDE Auto-Retry: Model changed from " + lastModelValue + " to " + currentModel + ". Saving to localStorage.");
+                                writeDebugLog("Model changed from " + lastModelValue + " to " + currentModel + ". Saving to localStorage.");
+                                localStorage.setItem('antigravity-patched-last-model', currentModel);
+                                lastModelValue = currentModel;
+                            }
+
+                            // 2. Restore model
+                            if (!modelRestored && savedModel) {
+                                if (currentModel === savedModel) {
+                                    console.log("Antigravity IDE Auto-Retry: Model is already " + savedModel + ". Restore complete.");
+                                    writeDebugLog("Model is already " + savedModel + ". Restore complete.");
+                                    modelRestored = true;
+                                    lastModelValue = currentModel;
+                                    showToast(savedModel);
+                                } else {
+                                    const now = Date.now();
+                                    const parentDiv = modelBtn.closest('[aria-haspopup="dialog"]');
+                                    const isDropdownOpen = parentDiv && parentDiv.getAttribute('aria-expanded') === 'true';
+
+                                    if (!isDropdownOpen) {
+                                        if (now - lastActionTime > 2000) {
+                                            console.log("Antigravity IDE Auto-Retry: Opening model dropdown to restore: " + savedModel);
+                                            writeDebugLog("Clicking model button to open dropdown for restore");
+                                            modelBtn.click();
+                                            lastActionTime = now;
+                                            openAttempts++;
+                                        }
+                                    } else {
+                                        const interactiveElements = Array.from(document.querySelectorAll('button, [role="menuitem"], [role="option"], .setting-dropdown-option, [class*="option" i], [class*="item" i]'));
+                                        const targetOption = interactiveElements.find(el => {
+                                            const cleanText = el.textContent.trim().replace(/\s+/g, ' ');
+                                            return cleanText.includes(savedModel) && cleanText.length < savedModel.length + 15;
+                                        });
+
+                                        if (targetOption) {
+                                            console.log("Antigravity IDE Auto-Retry: Found target model option. Clicking: " + savedModel);
+                                            writeDebugLog("Clicking target model option", targetOption);
+                                            targetOption.click();
+                                            modelRestored = true;
+                                            lastModelValue = savedModel;
+                                            lastActionTime = now;
+                                            showToast(savedModel);
+                                        } else {
+                                            if (now - lastActionTime > 1000) {
+                                                console.log("Antigravity IDE Auto-Retry: Model option not found in dropdown. Closing dropdown to retry later.");
+                                                writeDebugLog("Closing dropdown since option was not found");
+                                                modelBtn.click();
+                                                lastActionTime = now;
+                                                if (openAttempts >= 3) {
+                                                    console.log("Antigravity IDE Auto-Retry: Target model " + savedModel + " not available after 3 attempts. Giving up.");
+                                                    writeDebugLog("Target model " + savedModel + " not available after 3 attempts. Giving up.");
+                                                    modelRestored = true;
+                                                    lastModelValue = currentModel;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (!modelRestored && !savedModel) {
+                                modelRestored = true;
+                                lastModelValue = currentModel;
+                                console.log("Antigravity IDE Auto-Retry: No saved model. Initialized with current: " + currentModel);
+                                writeDebugLog("No saved model. Initialized with current: " + currentModel);
+                            }
+                        }
+                    }
+                }
             } catch (e) {
                 console.error("Antigravity IDE Auto-Retry loop error:", e);
                 writeDebugLog(\`Auto-Retry loop error: \${e.message}\`);
+                showErrorToast(e);
             }
         }, 100);
     }
     startAutoRetry();
+    showToast('Antigravity IDE: Auto-Retry Patch <strong style="color: #a6e3a1">active</strong>', false, '#a6e3a1', 8000);
+
+    window.addEventListener('error', (event) => {
+        try {
+            const err = event.error || { message: event.message, stack: (event.filename || 'unknown') + ':' + (event.lineno || 0) + ':' + (event.colno || 0) };
+            showErrorToast(err);
+        } catch (e) {}
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        try {
+            const err = event.reason || { message: 'Unhandled Promise Rejection' };
+            showErrorToast(err);
+        } catch (e) {}
+    });
 })();
 </script>
 <!-- Antigravity IDE Auto-Retry Patch End -->
@@ -967,7 +1505,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
  * Detects the current state of features in the patched workbench.html.
  */
 function detectCurrentState(workbenchPath) {
-    const state = { ssh: false, corruption: false, debug: false };
+    const state = { ssh: false, corruption: false, debug: false, restoreModel: false };
     if (!workbenchPath || !fs.existsSync(workbenchPath)) return state;
 
     try {
@@ -979,6 +1517,7 @@ function detectCurrentState(workbenchPath) {
                 state.ssh = !!config.ssh;
                 state.corruption = !!config.corruption;
                 state.debug = !!config.debug;
+                state.restoreModel = !!config.restoreModel;
                 return state;
             } catch (e) { }
         }
@@ -987,6 +1526,7 @@ function detectCurrentState(workbenchPath) {
         state.ssh = content.includes('Part 6: Remote-SSH-Auto-Login');
         state.corruption = content.includes('Part 5: Hide corruption warning');
         state.debug = content.includes('Diagnostic Key Tracker');
+        state.restoreModel = content.includes('Part 7: Auto-Restore Last Selected AI Model');
     } catch (e) { }
     return state;
 }
@@ -1053,11 +1593,16 @@ async function getPatchChoice(workbenchPath) {
                 rl.question(`Would you also like to hide the "corrupt installation" warning message? (y/n) [Default: ${corruptionDefault}]: `, (hideAnswer) => {
                     const hideCorruption = hideAnswer ? hideAnswer.toLowerCase().startsWith('y') : currentState.corruption;
 
-                    const debugDefault = currentState.debug ? 'y' : 'n';
-                    rl.question(`Would you like to enable debug mode? (y/n) [Default: ${debugDefault}]: `, (debugAnswer) => {
-                        rl.close();
-                        const enableDebug = debugAnswer ? debugAnswer.toLowerCase().startsWith('y') : currentState.debug;
-                        resolve({ choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableDebug });
+                    const restoreModelDefault = currentState.restoreModel ? 'y' : 'n';
+                    rl.question(`Would you like to enable "Auto-Restore-Last-AI-Model"? (y/n) [Default: ${restoreModelDefault}]: `, (restoreAnswer) => {
+                        const enableRestoreModel = restoreAnswer ? restoreAnswer.toLowerCase().startsWith('y') : currentState.restoreModel;
+
+                        const debugDefault = currentState.debug ? 'y' : 'n';
+                        rl.question(`Would you like to enable debug mode? (y/n) [Default: ${debugDefault}]: `, (debugAnswer) => {
+                            rl.close();
+                            const enableDebug = debugAnswer ? debugAnswer.toLowerCase().startsWith('y') : currentState.debug;
+                            resolve({ choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableRestoreModel, enableDebug });
+                        });
                     });
                 });
             });
@@ -1123,13 +1668,13 @@ async function applyPatch() {
     log('--- Antigravity IDE Retry Patch Utility ---');
 
     const workbenchPath = getWorkbenchPath();
-    const { choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableDebug } = await getPatchChoice(workbenchPath);
+    const { choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableRestoreModel, enableDebug } = await getPatchChoice(workbenchPath);
     if (choice === 'reset_all') {
         log(`Selected mode: RESET ALL`);
     } else if (choice === 'skip_patching') {
         log(`Selected mode: SKIP PATCHING (Configuration only)`);
     } else {
-        log(`Selected mode: ${choice.toUpperCase()}${enableSshAutoLogin ? ' + SSH AUTO-LOGIN (' + Object.keys(sshPasswords).length + ' hosts)' : ''}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}${enableDebug ? ' + DEBUG MODE' : ''}`);
+        log(`Selected mode: ${choice.toUpperCase()}${enableSshAutoLogin ? ' + SSH AUTO-LOGIN (' + Object.keys(sshPasswords).length + ' hosts)' : ''}${hideCorruption ? ' + HIDE CORRUPTION WARNING' : ''}${enableRestoreModel ? ' + AUTO-RESTORE LAST MODEL' : ''}${enableDebug ? ' + DEBUG MODE' : ''}`);
     }
 
     if (choice === 'skip_patching') {
@@ -1210,7 +1755,7 @@ async function applyPatch() {
 
         log('Preparing patched content...');
         let html = cleanHtml;
-        const injectionScript = generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords);
+        const injectionScript = generateInjectionScript(choice, hideCorruption, enableDebug, enableSshAutoLogin, sshPasswords, enableRestoreModel);
 
         // 2. Inject 'unsafe-inline' into CSP (Content Security Policy)
         html = html.replace(/(script-src\s+[^;]*)/, (match) => {
