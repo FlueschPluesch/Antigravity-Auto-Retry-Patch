@@ -81,7 +81,7 @@ echo
 echo "[2/3] Applying the patch..."
 echo "Executing script: applyAutoRetryContinueAllowPatch.js using portable Node.js..."
 echo
-"$NODE_EXE" applyAutoRetryContinueAllowPatch.js
+"$NODE_EXE" applyAutoRetryContinueAllowPatch.js "$@"
 EXIT_CODE=$?
 
 echo

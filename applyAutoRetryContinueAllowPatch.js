@@ -1664,10 +1664,127 @@ function getWorkbenchPath() {
     return null;
 }
 
+function parseArgs() {
+    const args = process.argv.slice(2);
+    let customPath = null;
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--path' || arg === '-p') {
+            if (i + 1 < args.length) {
+                customPath = args[i + 1];
+                i++;
+            }
+        } else if (!arg.startsWith('-')) {
+            customPath = arg;
+        }
+    }
+    return { customPath };
+}
+
+function resolveManualPath(inputPath) {
+    if (!inputPath) return null;
+    const cleaned = inputPath.trim().replace(/^['"]|['"]$/g, ''); // remove quotes if any
+    
+    // Check if the path itself is workbench.html
+    if (fs.existsSync(cleaned)) {
+        const stat = fs.statSync(cleaned);
+        if (stat.isFile() && path.basename(cleaned).toLowerCase() === 'workbench.html') {
+            return cleaned;
+        }
+    }
+    
+    // Check if the path is a directory containing workbench.html
+    const directPath = path.join(cleaned, 'workbench.html');
+    if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
+        return directPath;
+    }
+
+    // Check standard subpaths relative to the installation directory
+    const relativeWorkbenchPath = path.join('resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html');
+    const winLinuxPath = path.join(cleaned, relativeWorkbenchPath);
+    if (fs.existsSync(winLinuxPath) && fs.statSync(winLinuxPath).isFile()) {
+        return winLinuxPath;
+    }
+
+    const macPath = path.join(cleaned, 'Contents', 'Resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html');
+    if (fs.existsSync(macPath) && fs.statSync(macPath).isFile()) {
+        return macPath;
+    }
+    
+    const macAppPath = path.join(cleaned, 'Antigravity IDE.app', 'Contents', 'Resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html');
+    if (fs.existsSync(macAppPath) && fs.statSync(macAppPath).isFile()) {
+        return macAppPath;
+    }
+
+    const macAppPathLegacy = path.join(cleaned, 'Antigravity.app', 'Contents', 'Resources', 'app', 'out', 'vs', 'code', 'electron-browser', 'workbench', 'workbench.html');
+    if (fs.existsSync(macAppPathLegacy) && fs.statSync(macAppPathLegacy).isFile()) {
+        return macAppPathLegacy;
+    }
+
+    return null;
+}
+
+async function getInteractiveWorkbenchPath() {
+    let workbenchPath = getWorkbenchPath();
+    if (workbenchPath) {
+        return workbenchPath;
+    }
+
+    warn('Could not find Antigravity IDE installation path automatically.');
+    
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    try {
+        while (true) {
+            const answer = await new Promise((resolve) => {
+                rl.question('\nPlease enter the manual path to your Antigravity IDE installation directory (or workbench.html), or press Enter to cancel: ', resolve);
+            });
+            
+            const trimmed = answer.trim();
+            if (!trimmed) {
+                break;
+            }
+
+            const resolved = resolveManualPath(trimmed);
+            if (resolved) {
+                log(`Successfully resolved manual path to: ${resolved}`);
+                return resolved;
+            } else {
+                error(`Invalid installation path. Could not find workbench.html inside: ${trimmed}`);
+            }
+        }
+    } finally {
+        rl.close();
+    }
+    
+    return null;
+}
+
 async function applyPatch() {
     log('--- Antigravity IDE Retry Patch Utility ---');
 
-    const workbenchPath = getWorkbenchPath();
+    const args = parseArgs();
+    let workbenchPath = null;
+
+    if (args.customPath) {
+        log(`Using custom path from command line arguments: ${args.customPath}`);
+        workbenchPath = resolveManualPath(args.customPath);
+        if (!workbenchPath) {
+            error(`The specified manual path is invalid or does not contain workbench.html: ${args.customPath}`);
+            process.exit(1);
+        }
+    } else {
+        workbenchPath = await getInteractiveWorkbenchPath();
+    }
+
+    if (!workbenchPath) {
+        error('Could not find Antigravity IDE installation path. Please ensure Antigravity IDE is installed or check the script path definitions.');
+        process.exit(1);
+    }
+
     const { choice, enableSshAutoLogin, sshPasswords, hideCorruption, enableRestoreModel, enableDebug } = await getPatchChoice(workbenchPath);
     if (choice === 'reset_all') {
         log(`Selected mode: RESET ALL`);
@@ -1688,11 +1805,6 @@ async function applyPatch() {
         warn('NOTE: Option 11 does NOT modify your Antigravity IDE installation.');
         warn('To remove or change existing patches, you must use options 1-10.');
         log('------------------------------------------');
-        return;
-    }
-
-    if (!workbenchPath) {
-        error('Could not find Antigravity IDE installation path. Please ensure Antigravity IDE is installed or check the script path definitions.');
         return;
     }
 

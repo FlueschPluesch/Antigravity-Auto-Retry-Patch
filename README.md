@@ -51,6 +51,15 @@ If you already have Node.js installed globally, open your terminal in the folder
 * **Windows**: Right-click your terminal and select **"Run as Administrator"**, then run `node applyAutoRetryContinueAllowPatch.js`
 * **Linux / macOS**: Run `sudo node applyAutoRetryContinueAllowPatch.js`
 
+**Option C: Specifying a Custom Antigravity IDE Path (Optional)**
+If your Antigravity IDE is installed in a non-standard directory, you can specify its path as an argument to the installation scripts or the Node script:
+* **Windows (Script)**: `install_windows.bat --path "C:\Path\To\Antigravity"` (or run `install_windows.bat "C:\Path\To\Antigravity"`)
+* **Linux / macOS (Script)**: `./install_linux.sh --path "/custom/path/to/antigravity"` or `./install_mac.command --path "/custom/path/to/antigravity"`
+* **Manual execution**: `node applyAutoRetryContinueAllowPatch.js --path "/custom/path/to/antigravity"`
+
+*Note: You can specify either the path to the main directory of the IDE (where `resources` or the app container resides) or the path to the `workbench.html` file directly. If no path is specified and the utility cannot automatically find the installation directory, it will ask you to specify the path interactively.*
+
+
 ### Step 2: Configure your options
 The script will present a menu. Choose the desired combination of features:
 1) All (Retry + Continue + Allow + Run + Submit) [Default]
