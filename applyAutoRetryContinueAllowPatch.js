@@ -653,13 +653,101 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             let message = '';
             let stack = '';
             
-            if (err && typeof err === 'object') {
-                message = err.message || String(err);
-                stack = err.stack || message;
-            } else {
-                message = String(err);
-                stack = message;
-            }
+            const serializeError = (val) => {
+                let msg = '';
+                let stk = '';
+                if (val && typeof val === 'object') {
+                    if (typeof Event !== 'undefined' && val instanceof Event) {
+                        msg = \`Event [type: \${val.type}]\`;
+                        if (val.message) {
+                            msg += \`: \${val.message}\`;
+                        }
+                        
+                        let targetInfo = '';
+                        try {
+                            if (val.target) {
+                                if (val.target.outerHTML) {
+                                    targetInfo = val.target.outerHTML.substring(0, 200);
+                                } else if (val.target.tagName) {
+                                    targetInfo = '<' + val.target.tagName.toLowerCase() + '>';
+                                } else {
+                                    targetInfo = String(val.target);
+                                }
+                            }
+                        } catch (e) {
+                            targetInfo = '[Unable to access target]';
+                        }
+                        
+                        let currentTargetInfo = '';
+                        try {
+                            if (val.currentTarget) {
+                                if (val.currentTarget.outerHTML) {
+                                    currentTargetInfo = val.currentTarget.outerHTML.substring(0, 200);
+                                } else if (val.currentTarget.tagName) {
+                                    currentTargetInfo = '<' + val.currentTarget.tagName.toLowerCase() + '>';
+                                } else {
+                                    currentTargetInfo = String(val.currentTarget);
+                                }
+                            }
+                        } catch (e) {
+                            currentTargetInfo = '[Unable to access currentTarget]';
+                        }
+                        
+                        stk = 'Event details:\\n' +
+                              'Type: ' + val.type + '\\n' +
+                              'Target: ' + targetInfo + '\\n' +
+                              'CurrentTarget: ' + currentTargetInfo + '\\n' +
+                              'Bubbles: ' + val.bubbles + '\\n' +
+                              'Cancelable: ' + val.cancelable + '\\n' +
+                              'TimeStamp: ' + val.timeStamp;
+                                
+                        if (val.message) {
+                            stk += '\\nMessage: ' + val.message;
+                        }
+                        if (val.filename) {
+                            stk += '\\nSource: ' + val.filename + ':' + val.lineno + ':' + val.colno;
+                        }
+                        if (val.error) {
+                            const underlying = serializeError(val.error);
+                            stk += '\\n\\nUnderlying error:\\n' + underlying.stack;
+                        }
+                        if (val.reason) {
+                            const underlying = serializeError(val.reason);
+                            stk += '\\n\\nRejection reason:\\n' + underlying.stack;
+                        }
+                    } else {
+                        msg = val.message || String(val);
+                        stk = val.stack || msg;
+                        
+                        if (msg === '[object Object]') {
+                            try {
+                                msg = JSON.stringify(val);
+                            } catch (e) {
+                                try {
+                                    msg = 'Object keys: ' + Object.keys(val).join(', ');
+                                } catch (e2) {}
+                            }
+                        }
+                        if (stk === '[object Object]') {
+                            try {
+                                stk = JSON.stringify(val, null, 2);
+                            } catch (e) {
+                                try {
+                                    stk = 'Object details:\\n' + Object.keys(val).map(k => k + ': ' + val[k]).join('\\n');
+                                } catch (e2) {}
+                            }
+                        }
+                    }
+                } else {
+                    msg = String(val);
+                    stk = msg;
+                }
+                return { message: msg, stack: stk };
+            };
+
+            const serialized = serializeError(err);
+            message = serialized.message;
+            stack = serialized.stack;
 
             if (message && message.includes('ResizeObserver')) {
                 return;
@@ -808,7 +896,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
 
             container.appendChild(toast);
 
-            writeDebugLog(\`Displaying error toast: "\${message}"\`);
+            writeDebugLog(\`Displaying error toast: "\${message}"\\nStack trace:\\n\${stack}\`);
 
             requestAnimationFrame(() => {
                 toast.style.setProperty('opacity', '1', 'important');
