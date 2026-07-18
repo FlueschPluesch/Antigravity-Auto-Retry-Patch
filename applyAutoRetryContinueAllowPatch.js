@@ -749,7 +749,7 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             message = serialized.message;
             stack = serialized.stack;
 
-            if (message && message.includes('ResizeObserver')) {
+            if (message && (message.includes('ResizeObserver') || message === 'Canceled' || message === 'canceled')) {
                 return;
             }
             
