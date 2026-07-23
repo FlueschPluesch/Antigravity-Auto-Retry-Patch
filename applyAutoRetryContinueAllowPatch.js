@@ -749,7 +749,18 @@ function generateInjectionScript(choice, hideCorruption, enableDebug, enableSshA
             message = serialized.message;
             stack = serialized.stack;
 
-            if (message && (message.includes('ResizeObserver') || message === 'Canceled' || message === 'canceled')) {
+            if (
+                !message ||
+                message.includes('ResizeObserver') ||
+                message.includes("reading 'dimensions'") ||
+                (stack && stack.includes('@xterm/xterm')) ||
+                /canceled/i.test(message.trim()) ||
+                (err && err.name && /canceled/i.test(String(err.name))) ||
+                (err && err.message && /canceled/i.test(String(err.message))) ||
+                (err && err.reason && /canceled/i.test(String(err.reason))) ||
+                (stack && /canceled:\s*canceled/i.test(stack)) ||
+                (stack && stack.trim().toLowerCase().startsWith('canceled'))
+            ) {
                 return;
             }
             
